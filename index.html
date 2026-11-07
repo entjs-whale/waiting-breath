@@ -148,7 +148,7 @@ body.quiet .breath{opacity:.35}
 
 <div class="intro" id="intro">
   <div class="card">
-    <p class="eyebrow">숨의 바다 · 화면구성 컨셉 v1.8 · 실사 형태 + 양모펠트</p>
+    <p class="eyebrow">숨의 바다 · 화면구성 컨셉 v1.9 · 실사 형태 + 양모펠트</p>
     <h1>기다리는 숨</h1>
     <p class="lede">어미 향고래가 깊은 바다로 사냥을 내려가면,<br>아직 숨이 짧은 새끼 향고래는 수면에 남아<br>기다립니다. 이 화면에서 당신은 새끼 향고래의<br>눈과 귀가 됩니다.</p>
     <p class="how">헤드폰을 쓰면 어미의 소리가 어느 쪽, 얼마나 깊은 곳에서 오는지 들립니다. 화면을 끌어 둘러보고, 숨이 차오르면 시야가 어두워지고 심장 소리가 커져요. 그때 ‘숨’을 눌러 수면 위로 올라 숨을 쉬세요. 엄마가 부르면 ‘Coda’ 버튼을 엄마의 리듬에 맞춰 두드려 대답해 보세요. 장면은 3분 남짓 이어지고 처음으로 돌아갑니다.</p>
@@ -2218,7 +2218,7 @@ function enter(ph) {
   if (ph === 'away' && FV.q.length === 0) FV.last = '';
   if (ph === 'fluke') M.stay = cam.pos.slice();
   if (ph === 'descend') M.clickNext = 2;
-  if (ph === 'away') { M.hidden = true; M.clickNext = 1.2; M.yaw0 = cam.yaw; M.cre = [[1, 'eagles'], [6, 'jelly'], [9, 'manta'], [17, 'schoolC'], [25, 'turtle'], [33, 'jelly2'], [40, 'schoolB'], [48, 'schoolD'], [56, 'jelly3'], [61, 'schoolA']]; }
+  if (ph === 'away') { M.hidden = true; M.clickNext = 1.2; M.yaw0 = cam.yaw; M.cre = [[1, 'eagles'], [6, 'jelly'], [9, 'manta'], [17, 'schoolC'], [25, 'turtle'], [33, 'jelly2'], [40, 'schoolB'], [48, 'schoolD'], [51, 'manta2'], [56, 'jelly3'], [61, 'schoolA']]; }
   if (ph === 'ascend') placeForAscent();
 }
 function placeForAscent() {
@@ -2483,7 +2483,7 @@ function updateCam(dt) {
   else if (M.ph === 'ascend') { if (S.pos[1] > -9) { T = wholeBodyCentre(); fitWhole = true; } else T = [S.pos[0], S.pos[1], S.pos[2]]; }
   else { // away: watch the dark where she went, lift the eyes to the light for a while, then look down again
     const t = M.t;
-    const manta = CR.list.find(c => c.type === 4 && c.pos && c.age > 3 && c.age < c.life - 3);
+    const manta = BR.t < 0 && CR.list.find(c => c.type === 4 && c.pos && c.age > 3 && c.age < c.life - 3);
     if (manta) T = manta.pos;
     else if (SHIP.on && SHIP.t > 2 && SHIP.t < SHIP.dur + 9) T = [SHIP.pos[0] + SHIP.dir[0] * 2, SURF, SHIP.pos[2] + SHIP.dir[1] * 2];
     else if (t < 22 || t > 50) T = [cam.pos[0] + Math.cos(M.yaw0) * 4.5, -4.6, cam.pos[2] - Math.sin(M.yaw0) * 4.5];
@@ -2690,7 +2690,7 @@ function spawnEagles(yaw, dist, y, count, life) {
     CR.list.push({ type: 3, start: s0, v, age: 0, life: life + back / speed, size: 0.17 + 0.04 * Math.random(), ph: k * 0.45 + Math.random() * 0.4, rate: 4.6 + Math.random() * 0.5, seed: Math.random(), dir: v, ray: true, amp: 1 });
   }
 }
-function spawnManta(yaw, dist, y, life) {
+function spawnManta(yaw, dist, y, life, size, arc) {
   const speed = 0.24;
   const c = crAhead(yaw, dist, y);
   // straight across the calf's view (no random slant), so it is seen broadside as it comes closest
@@ -2698,7 +2698,7 @@ function spawnManta(yaw, dist, y, life) {
   const v = [Math.cos(py) * speed, 0, -Math.sin(py) * speed];
   const start = [c[0] - v[0] * life / 2, c[1], c[2] - v[2] * life / 2];
   const toCam = norm3([cam.pos[0] - c[0], 0, cam.pos[2] - c[2]]);
-  CR.list.push({ type: 4, start, v, age: 0, life, size: 0.40, ph: 0, rate: 1.95, seed: Math.random(), dir: v, ray: true, amp: 1, bow: toCam, arc: 0.5 });
+  CR.list.push({ type: 4, start, v, age: 0, life, size, ph: 0, rate: 1.85, seed: Math.random(), dir: v, ray: true, amp: 1, bow: toCam, arc });
 }
 function crEvent(name) {
   const y0 = M.yaw0;
@@ -2710,7 +2710,8 @@ function crEvent(name) {
   else if (name === 'schoolD') spawnSchool(y0 + 0.55, 4.2, -2.6, 10, 16, 0.33, 0.10);
   else if (name === 'jelly2') spawnJelly(y0 - 0.35, 3.6, -1.9, 0.22, 30);
   else if (name === 'eagles') spawnEagles(y0 - 0.30, 4.0, -2.8, 7, 24);
-  else if (name === 'manta') spawnManta(y0 + 0.15, 2.1, -1.7, 22);
+  else if (name === 'manta') spawnManta(y0 + 0.15, 2.0, -1.55, 22, 0.56, 0.75);
+  else if (name === 'manta2') spawnManta(y0 - 0.25, 2.2, -1.75, 22, 0.50, 0.65);
   else if (name === 'jelly3') { spawnJelly(y0 + 0.2, 2.9, -1.3, 0.17, 26); spawnJelly(y0 - 0.15, 4.4, -2.4, 0.21, 26); }
 }
 function updateCreatures(dt) {

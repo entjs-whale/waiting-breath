@@ -1,5 +1,5 @@
 // 기다리는 숨 — offline cache. Change VERSION whenever index.html changes, so devices pick up the new page.
-const VERSION = 'waiting-breath-v1.8';
+const VERSION = 'waiting-breath-v1.9';
 const CORE = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(VERSION).then(c => c.addAll(CORE)).then(() => self.skipWaiting()));
