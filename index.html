@@ -148,7 +148,7 @@ body.quiet .breath{opacity:.35}
 
 <div class="intro" id="intro">
   <div class="card">
-    <p class="eyebrow">숨의 바다 · 화면구성 컨셉 v1.9 · 실사 형태 + 양모펠트</p>
+    <p class="eyebrow">숨의 바다 · 화면구성 컨셉 v1.10 · 실사 형태 + 양모펠트</p>
     <h1>기다리는 숨</h1>
     <p class="lede">어미 향고래가 깊은 바다로 사냥을 내려가면,<br>아직 숨이 짧은 새끼 향고래는 수면에 남아<br>기다립니다. 이 화면에서 당신은 새끼 향고래의<br>눈과 귀가 됩니다.</p>
     <p class="how">헤드폰을 쓰면 어미의 소리가 어느 쪽, 얼마나 깊은 곳에서 오는지 들립니다. 화면을 끌어 둘러보고, 숨이 차오르면 시야가 어두워지고 심장 소리가 커져요. 그때 ‘숨’을 눌러 수면 위로 올라 숨을 쉬세요. 엄마가 부르면 ‘Coda’ 버튼을 엄마의 리듬에 맞춰 두드려 대답해 보세요. 장면은 3분 남짓 이어지고 처음으로 돌아갑니다.</p>
@@ -1733,7 +1733,7 @@ fn turtleSd(q: vec2f, ph: f32) -> f32 {
 
 // ===== the merchant ship above the water, seen when the calf comes up to breathe =====
 struct ShOut { @builtin(position) pos: vec4f, @location(0) wp: vec3f, @location(1) n: vec3f, @location(2) col: vec3f, @location(3) lp: vec3f };
-@vertex fn vsShip(@location(0) p: vec3f, @location(1) nn: vec3f, @location(2) col: vec3f) -> ShOut {
+fn shipOut(p: vec3f, nn: vec3f, col: vec3f) -> ShOut {
   let t = u.ship2.y;
   let roll = 0.012 * sin(t * 0.55);
   let pitch = 0.005 * sin(t * 0.37 + 1.0);
@@ -1748,10 +1748,28 @@ struct ShOut { @builtin(position) pos: vec4f, @location(0) wp: vec3f, @location(
   o.lp = p;
   return o;
 }
+@vertex fn vsShip(@location(0) p: vec3f, @location(1) nn: vec3f, @location(2) col: vec3f) -> ShOut { return shipOut(p, nn, col); }
+// the propeller: about 84 turns a minute, sitting under the counter ahead of the rudder
+const PROP_AT = vec3f(-7.55, -0.62, 0.0);
+fn spinX(v: vec3f, a: f32) -> vec3f { let c = cos(a); let s = sin(a); return vec3f(v.x, v.y * c - v.z * s, v.y * s + v.z * c); }
+@vertex fn vsProp(@location(0) p: vec3f, @location(1) nn: vec3f, @location(2) col: vec3f) -> ShOut {
+  let a = -u.ship2.y * 8.8;
+  return shipOut(PROP_AT + spinX(p, a), spinX(nn, a), col);
+}
 @fragment fn fsShip(i: ShOut) -> @location(0) vec4f {
-  if (i.wp.y < u.world.x - 0.03) { discard; }
+  let S = u.world.x;
   var n = normalize(i.n);
   if (dot(n, u.eye.xyz - i.wp) < 0.0) { n = -n; }
+  if (u.eye.y < S) {
+    // seen from below: only what is under the water, lit faintly from the surface, fading into the blue
+    if (i.wp.y > S + 0.01) { discard; }
+    let f2 = vnoise(i.lp * 9.0) * 0.6 + vnoise(i.lp * 31.0) * 0.4;
+    var cu = i.col * (0.10 + 0.22 * max(n.y, 0.0) + 0.06 * max(-n.y, 0.0)) * (0.9 + 0.16 * f2);
+    // the light from above reaches the upper hull more than the keel
+    cu *= 0.6 + 0.6 * smoothstep(-1.1, 0.0, i.wp.y - S);
+    return vec4f(water(cu, i.wp), 1.0);
+  }
+  if (i.wp.y < S - 0.03) { discard; }
   let dif = max(dot(n, normalize(u.sun.xyz)), 0.0);
   var c = i.col * (0.55 + 0.20 * n.y + 0.70 * dif);
   // felted, like everything else in this sea: a soft mottle over each block
@@ -1870,6 +1888,61 @@ fn rayPlan(q: vec2f, manta: bool) -> f32 {
   // light from the surface catching each fold of the wing
   col += vec3f(0.04, 0.06, 0.07) * pow(abs(nrm.y), 6.0);
   return vec4f(water(col, i.wp), alpha);
+}
+
+// ===== the propeller's wash: bubbles thrown back in a turning, widening column, left behind in the water =====
+// Each bubble is born at the propeller at some moment in the last few seconds. It is placed where the propeller was then,
+// carried aft by the jet, spun with it, spread out and slowly rising; so the column stays in the water as the ship moves on.
+struct WaOut { @builtin(position) pos: vec4f, @location(0) uv: vec2f, @location(1) wp: vec3f, @location(2) a: f32, @location(3) k: f32 };
+fn h11(n: f32) -> f32 { return fract(sin(n * 127.1) * 43758.5453); }
+@vertex fn vsWash(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> WaOut {
+  var o: WaOut;
+  let fi = f32(ii);
+  let LIFE = 5.0;
+  let ph = h11(fi * 1.37 + 0.2);
+  let age = fract(u.ship2.y / LIFE + ph) * LIFE;
+  let tb = u.ship2.y - age;                       // when it was born
+  let cs = cos(u.ship.z);
+  let sn = sin(u.ship.z);
+  let fw = vec3f(cs, 0.0, sn);
+  let sd = vec3f(-sn, 0.0, cs);
+  // where the propeller was at that moment (the ship moves 34 units in 24 s)
+  let born = vec3f(u.ship.x, u.world.x, u.ship.y) - fw * (1.4167 * age) + fw * PROP_AT.x + vec3f(0.0, PROP_AT.y, 0.0);
+  let jet = 2.6 * (1.0 - exp(-age * 1.1));
+  let rad = 0.10 + 0.30 * h11(fi * 3.1) + 0.32 * sqrt(age);
+  let ang = h11(fi * 7.7) * 6.2832 + age * 2.6 * exp(-age * 0.35);
+  let cloud = ii < 1000u;   // the first few hundred are the milky churn; the rest are bubbles
+  var p = born - fw * jet + sd * cos(ang) * rad * select(1.0, 1.25, cloud) + vec3f(0.0, sin(ang) * rad * 0.8 + 0.028 * age * age, 0.0);
+  p.y = min(p.y, u.world.x - 0.03);
+  let vis = select(0.0, 1.0, tb > 0.4 && u.ship.w > 0.5);
+  let size = select((0.008 + 0.016 * h11(fi * 5.3)) * (1.0 + 0.3 * age), (0.10 + 0.14 * h11(fi * 5.3)) * (0.6 + 0.5 * age), cloud);
+  var cs6 = array<vec2f, 6>(vec2f(-1.0, -1.0), vec2f(1.0, -1.0), vec2f(1.0, 1.0), vec2f(-1.0, -1.0), vec2f(1.0, 1.0), vec2f(-1.0, 1.0));
+  let c = cs6[vi];
+  // young bubbles are streaks along the jet; older ones round
+  let stretch = select(1.0 + 4.0 * exp(-age * 1.6), 1.0 + 1.2 * exp(-age * 0.8), cloud);
+  let V = normalize(p - u.eye.xyz);
+  var ax = fw - V * dot(fw, V);
+  if (length(ax) < 1e-3) { ax = u.camR.xyz; }
+  ax = normalize(ax);
+  let ay = normalize(cross(V, ax));
+  let wp = p + ax * c.x * size * stretch + ay * c.y * size;
+  o.pos = u.viewProj * vec4f(wp, 1.0);
+  o.uv = c;
+  o.wp = wp;
+  o.a = vis * smoothstep(0.0, 0.12, age) * (1.0 - smoothstep(LIFE * 0.5, LIFE, age)) * select(0.35 + 0.6 * exp(-age * 0.6), 0.20 * exp(-age * 0.35), cloud);
+  o.k = select(0.0, 1.0, cloud);
+  return o;
+}
+@fragment fn fsWash(i: WaOut) -> @location(0) vec4f {
+  let r = length(i.uv);
+  // a bubble: bright rim, clear centre; a churn cloud: a soft round puff
+  let bub = (1.0 - smoothstep(0.55, 1.0, r)) * (0.45 + 0.55 * smoothstep(0.2, 0.75, r));
+  let puff = exp(-r * r * 3.0) * (1.0 - smoothstep(0.8, 1.0, r));
+  let m = mix(bub, puff, i.k);
+  let a = m * i.a;
+  if (a < 0.004) { discard; }
+  let col = water(vec3f(0.80, 0.90, 0.92), i.wp);
+  return vec4f(col, a);
 }
 
 @fragment fn fsBase(i: VOut) -> @location(0) vec4f {
@@ -2485,7 +2558,13 @@ function updateCam(dt) {
     const t = M.t;
     const manta = BR.t < 0 && CR.list.find(c => c.type === 4 && c.pos && c.age > 3 && c.age < c.life - 3);
     if (manta) T = manta.pos;
-    else if (SHIP.on && SHIP.t > 2 && SHIP.t < SHIP.dur + 9) T = [SHIP.pos[0] + SHIP.dir[0] * 2, SURF, SHIP.pos[2] + SHIP.dir[1] * 2];
+    else if (SHIP.on && SHIP.t > 2 && SHIP.t < SHIP.dur + 9) {
+      if (BR.t >= 0) T = [SHIP.pos[0] + SHIP.dir[0] * 2, SURF, SHIP.pos[2] + SHIP.dir[1] * 2];
+      else {
+        const k = sstep(9, 14, SHIP.t), px = -6.3;   // a little ahead of the propeller: the eye trails as it passes
+        T = [SHIP.pos[0] + SHIP.dir[0] * mix(1.5, px, k), mix(-0.3, -0.62, k), SHIP.pos[2] + SHIP.dir[1] * mix(1.5, px, k)];
+      }
+    }
     else if (t < 22 || t > 50) T = [cam.pos[0] + Math.cos(M.yaw0) * 4.5, -4.6, cam.pos[2] - Math.sin(M.yaw0) * 4.5];
     else {
       const w = Math.sin((t - 22) / 24 * Math.PI), a = M.yaw0 + w * 1.1;
@@ -2535,7 +2614,7 @@ function startShip() {
   const look = M.yaw0, a = look + Math.PI / 2 + 0.35;
   SHIP.dir = [Math.cos(a), -Math.sin(a)];
   // closest approach a little to the side of the calf, ahead of where it looks
-  SHIP.c = [cam.pos[0] + Math.cos(look) * 1.9, cam.pos[2] - Math.sin(look) * 1.9];
+  SHIP.c = [cam.pos[0] + Math.cos(look) * 3.0, cam.pos[2] - Math.sin(look) * 3.0];
   SHIP.yaw = Math.atan2(SHIP.dir[1], SHIP.dir[0]);
   SHIP.on = true; SHIP.t = 0;
 }
@@ -2571,7 +2650,7 @@ function initShipSound() {
   const c = ac.createBufferSource(); c.buffer = AU.white; c.loop = true;
   const cb = ac.createBiquadFilter(); cb.type = 'bandpass'; cb.frequency.value = 850; cb.Q.value = 0.6;
   const cg = ac.createGain(); cg.gain.value = 0.10;
-  const lfo = ac.createOscillator(); lfo.frequency.value = 4.6;
+  const lfo = ac.createOscillator(); lfo.frequency.value = 5.6;   // four blades at about 84 rpm
   const lg = ac.createGain(); lg.gain.value = 0.09;
   lfo.connect(lg); lg.connect(cg.gain); lfo.start();
   c.connect(cb); cb.connect(cg); cg.connect(AU.ship); c.start();
@@ -2579,6 +2658,7 @@ function initShipSound() {
 
 // A merchant ship, as cut-out felt blocks: a long dark hull with a red boot-top, rows of containers,
 // the white bridge house at the stern and its funnel. Local frame: x toward the bow (16 units ≈ 96 m), z across, y up from the waterline.
+const mix = (p, q, k) => p + (q - p) * k;
 function buildShipMesh() {
   const out = [];
   const tri = (p0, p1, p2, col) => {
@@ -2599,24 +2679,46 @@ function buildShipMesh() {
   const beam = x => 1.35 * Math.sqrt(clamp(1 - Math.max(x - 3.5, 0) / 4.5, 0, 1)) * (1 - 0.25 * sstep(-6, -8, x));
   const wl = 0.86; // the sides flare out from the waterline to the deck
   const deck = x => 1.25 + 0.35 * sstep(4, 8, x);
-  const HULL = [0.09, 0.12, 0.17], BOOT = [0.50, 0.14, 0.11], DECK = [0.30, 0.34, 0.32];
+  const HULL = [0.09, 0.12, 0.17], BOOT = [0.50, 0.14, 0.11], DECK = [0.30, 0.34, 0.32], DARK = [0.06, 0.08, 0.10];
   const N = 28, xs = [];
   for (let i = 0; i <= N; i++) xs.push(-8 + 16 * i / N);
+  // Each station is a cross-section from the deck edge down to the keel (one side; mirrored).
+  // Toward the stern the underwater body narrows and lifts, leaving the propeller clear under the counter.
+  const fa = wl + (1 - wl) * 0.2;
+  const KEEL = -1.05;
+  const section = x => {
+    const b = beam(x), d = deck(x);
+    const run = sstep(-5.0, -7.2, x);                  // 0 amidships, 1 over the propeller
+    const by = mix(KEEL, -0.18, run), wlow = b * wl * mix(1, 0.22, run);
+    return [[d, b], [0.18, b * fa], [-0.05, b * wl], [mix(-0.05, by, 0.55), wlow * 0.97], [by + 0.05, wlow * 0.78], [by, wlow * 0.5]];
+  };
   for (let i = 0; i < N; i++) {
-    const xa = xs[i], xb = xs[i + 1], ba = beam(xa), bb = beam(xb), da = deck(xa), db = deck(xb);
+    const xa = xs[i], xb = xs[i + 1], Sa = section(xa), Sb = section(xb);
     for (const s of [1, -1]) {
-      const q = (x, y, b) => [x, y, s * b];
-      const band = (y0a, y1a, y0b, y1b, col) => s > 0 ? quad(q(xa, y0a, ba), q(xb, y0b, bb), q(xb, y1b, bb), q(xa, y1a, ba), col) : quad(q(xa, y0a, ba), q(xa, y1a, ba), q(xb, y1b, bb), q(xb, y0b, bb), col);
-      const bandF = (y0, y1, f0, f1, col) => { const A0 = q(xa, y0, ba * f0), A1 = q(xa, y1, ba * f1), B0 = q(xb, y0, bb * f0), B1 = q(xb, y1, bb * f1); s > 0 ? quad(A0, B0, B1, A1, col) : quad(A0, A1, B1, B0, col); };
-      bandF(-0.5, 0.18, wl, wl + (1 - wl) * 0.2, BOOT);
-      const fa = wl + (1 - wl) * 0.2;
-      { const A0 = q(xa, 0.18, ba * fa), A1 = q(xa, da, ba), B0 = q(xb, 0.18, bb * fa), B1 = q(xb, db, bb); s > 0 ? quad(A0, B0, B1, A1, HULL) : quad(A0, A1, B1, B0, HULL); }
+      for (let k = 0; k < Sa.length - 1; k++) {
+        const A0 = [xa, Sa[k][0], s * Sa[k][1]], A1 = [xa, Sa[k + 1][0], s * Sa[k + 1][1]];
+        const B0 = [xb, Sb[k][0], s * Sb[k][1]], B1 = [xb, Sb[k + 1][0], s * Sb[k + 1][1]];
+        const col = k === 0 ? HULL : BOOT;
+        s > 0 ? quad(A0, A1, B1, B0, col) : quad(A0, B0, B1, A1, col);
+      }
     }
-    quad([xa, da, -ba], [xa, da, ba], [xb, db, bb], [xb, db, -bb], DECK);
+    const la = Sa[Sa.length - 1], lb = Sb[Sb.length - 1];
+    quad([xa, la[0], -la[1]], [xa, la[0], la[1]], [xb, lb[0], lb[1]], [xb, lb[0], -lb[1]], BOOT);   // flat bottom
+    quad([xa, deck(xa), -beam(xa)], [xa, deck(xa), beam(xa)], [xb, deck(xb), beam(xb)], [xb, deck(xb), -beam(xb)], DECK);
   }
-  const bt = beam(-8), fb = wl + (1 - wl) * 0.2;
-  quad([-8, -0.5, bt * wl], [-8, 0.18, bt * fb], [-8, 0.18, -bt * fb], [-8, -0.5, -bt * wl], BOOT);
-  quad([-8, 0.18, bt * fb], [-8, deck(-8), bt], [-8, deck(-8), -bt], [-8, 0.18, -bt * fb], HULL);
+  const bt = beam(-8), St = section(-8);
+  for (let k = 0; k < St.length - 1; k++)                                                     // the transom
+    quad([-8, St[k][0], St[k][1]], [-8, St[k + 1][0], St[k + 1][1]], [-8, St[k + 1][0], -St[k + 1][1]], [-8, St[k][0], -St[k][1]], k === 0 ? HULL : BOOT);
+  { // skeg: the deadwood tapering aft to the stern tube that carries the shaft
+    const P = [[-4.6, KEEL], [-6.4, KEEL], [-7.18, -0.80], [-7.18, -0.46], [-6.6, -0.30], [-4.6, -0.30]];
+    for (const s of [1, -1]) for (let k = 1; k < P.length - 1; k++) {
+      const v = (q) => [q[0], q[1], s * 0.06];
+      s > 0 ? tri(v(P[0]), v(P[k]), v(P[k + 1]), BOOT) : tri(v(P[0]), v(P[k + 1]), v(P[k]), BOOT);
+    }
+    for (let k = 0; k < P.length; k++) { const p0 = P[k], p1 = P[(k + 1) % P.length]; quad([p0[0], p0[1], 0.06], [p1[0], p1[1], 0.06], [p1[0], p1[1], -0.06], [p0[0], p0[1], -0.06], BOOT); }
+  }
+  box(-7.48, -7.15, -0.66, -0.58, -0.035, 0.035, DARK);     // shaft
+  box(-8.28, -7.98, -0.98, -0.16, -0.035, 0.035, BOOT);     // rudder
   box(-8.0, -7.6, deck(-8), deck(-8) + 0.16, -bt, bt, HULL);   // the bulwark around the stern deck
   // containers: 40-foot boxes, stacked two to four high
   const PAL = [[0.55, 0.20, 0.15], [0.16, 0.30, 0.48], [0.62, 0.55, 0.40], [0.22, 0.40, 0.30], [0.70, 0.42, 0.18], [0.48, 0.50, 0.52], [0.40, 0.16, 0.20]];
@@ -2631,7 +2733,7 @@ function buildShipMesh() {
     }
   }
   // the bridge house, its windows, the bridge wings, the funnel and a foremast
-  const WHITE = [0.86, 0.85, 0.80], DARK = [0.06, 0.08, 0.10], FUN = [0.62, 0.20, 0.14];
+  const WHITE = [0.86, 0.85, 0.80], FUN = [0.62, 0.20, 0.14];
   const ORANGE = [0.85, 0.42, 0.12];
   box(-7.25, -5.6, 1.25, 3.0, -1.12, 1.12, WHITE);                 // accommodation, four decks
   for (const y of [1.62, 2.05, 2.48]) {                            // rows of windows, fore and aft and along the sides
@@ -2651,9 +2753,45 @@ function buildShipMesh() {
   return new Float32Array(out);
 }
 
+function buildPropMesh() {
+  const out = [];
+  const tri = (p0, p1, p2, col) => {
+    const e1 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]], e2 = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]];
+    let n = cross3(e1, e2); const l = Math.hypot(n[0], n[1], n[2]); if (l < 1e-9) return; n = [n[0] / l, n[1] / l, n[2] / l];
+    for (const p of [p0, p1, p2]) out.push(p[0], p[1], p[2], n[0], n[1], n[2], col[0], col[1], col[2]);
+  };
+  const BRONZE = [0.62, 0.48, 0.26];
+  const R = 0.36, NB = 4, NS = 7;
+  for (let bl = 0; bl < NB; bl++) {
+    const base = bl * Math.PI * 2 / NB;
+    // a broad, skewed blade: chord widest two thirds out, pitched about the shaft, tip swept back against the turn
+    const pt = (r, c) => {
+      const chord = 0.20 * Math.sin(Math.PI * Math.min(1, (r - 0.07) / (R - 0.07)) * 0.85 + 0.25);
+      const ang = base + 0.55 * ((r - 0.07) / (R - 0.07)) ** 2 + c * chord / Math.max(r, 0.08);
+      const pitch = 0.9 / (1 + 3 * r);
+      return [-c * chord * Math.sin(pitch) * 1.6, Math.cos(ang) * r, Math.sin(ang) * r];
+    };
+    for (let i = 0; i < NS; i++) {
+      const r0 = 0.07 + (R - 0.07) * i / NS, r1 = 0.07 + (R - 0.07) * (i + 1) / NS;
+      tri(pt(r0, -0.5), pt(r1, -0.5), pt(r1, 0.5), BRONZE);
+      tri(pt(r0, -0.5), pt(r1, 0.5), pt(r0, 0.5), BRONZE);
+    }
+  }
+  // hub
+  const H = 12;
+  for (let i = 0; i < H; i++) {
+    const a0 = i / H * Math.PI * 2, a1 = (i + 1) / H * Math.PI * 2;
+    const p = (x, a, r) => [x, Math.cos(a) * r, Math.sin(a) * r];
+    tri(p(0.12, a0, 0.075), p(-0.14, a0, 0.075), p(-0.14, a1, 0.075), BRONZE);
+    tri(p(0.12, a0, 0.075), p(-0.14, a1, 0.075), p(0.12, a1, 0.075), BRONZE);
+    tri(p(-0.14, a0, 0.075), p(-0.24, a0, 0.0), p(-0.14, a1, 0.075), BRONZE);
+  }
+  return new Float32Array(out);
+}
+
 // ---------- other lives passing while the calf waits ----------
 const CR_MAX = 64;
-const RAY_NX = 28, RAY_NZ = 22;
+const RAY_NX = 28, RAY_NZ = 22, WASH_N = 3200;
 const CR = { list: [], data: new Float32Array(CR_MAX * 12), n: 0 };
 function crAhead(yaw, dist, y) { return [cam.pos[0] + Math.cos(yaw) * dist, y, cam.pos[2] - Math.sin(yaw) * dist]; }
 function crPath(c, yaw, speed, life) { // a straight crossing in front of the calf, centred on c halfway through its life
@@ -2855,6 +2993,9 @@ async function initGPU() {
     fiber: pipe('vsFiber', 'fsFiber', [], { cull: 'none', a2c: true }),
     cre: pipe('vsCre', 'fsCre', [], { cull: 'none', blend: true, depth: { format: 'depth24plus', depthWriteEnabled: false, depthCompare: 'less' } }),
     ray: pipe('vsRay', 'fsRay', [], { cull: 'none', blend: true, depth: { format: 'depth24plus', depthWriteEnabled: false, depthCompare: 'less' } }),
+    prop: pipe('vsProp', 'fsShip', [{ arrayStride: 36, attributes: [
+      { shaderLocation: 0, offset: 0, format: 'float32x3' }, { shaderLocation: 1, offset: 12, format: 'float32x3' }, { shaderLocation: 2, offset: 24, format: 'float32x3' }] }], { cull: 'none' }),
+    wash: pipe('vsWash', 'fsWash', [], { cull: 'none', blend: true, depth: { format: 'depth24plus', depthWriteEnabled: false, depthCompare: 'less' } }),
     ship: pipe('vsShip', 'fsShip', [{ arrayStride: 36, attributes: [
       { shaderLocation: 0, offset: 0, format: 'float32x3' }, { shaderLocation: 1, offset: 12, format: 'float32x3' }, { shaderLocation: 2, offset: 24, format: 'float32x3' }] }], { cull: 'none' }),
     surf: pipe('vsSurf', 'fsSurf', [], { cull: 'none', blend: true, depth: { format: 'depth24plus', depthWriteEnabled: false, depthCompare: 'less' } }),
@@ -2863,7 +3004,8 @@ async function initGPU() {
   if (err) throw new Error(err.message);
   device.lost.then(i => { if (i.reason !== 'destroyed') { G = null; showNoGPU('그래픽 장치와의 연결이 끊겼습니다. 페이지를 새로 고쳐 다시 시작해 주세요.'); } });
   const shipData = buildShipMesh(), shipBuf = mk(shipData, GPUBufferUsage.VERTEX);
-  G = { device, ctx, format, ubuf, creBuf, ripBuf, shipBuf, shipN: shipData.length / 9, posBuf, leanBuf, vbuf, ibuf, bind, pipes, nIdx: MESH.idx.length, msaa: null, depthTex: null, w: 0, h: 0, u: new Float32Array(84) };
+  const propData = buildPropMesh(), propBuf = mk(propData, GPUBufferUsage.VERTEX);
+  G = { device, ctx, format, ubuf, creBuf, ripBuf, shipBuf, shipN: shipData.length / 9, propBuf, propN: propData.length / 9, posBuf, leanBuf, vbuf, ibuf, bind, pipes, nIdx: MESH.idx.length, msaa: null, depthTex: null, w: 0, h: 0, u: new Float32Array(84) };
 }
 function ensureTargets() {
   const dpr = Math.min(window.devicePixelRatio || 1, QUAL[qi].dpr);
@@ -2928,7 +3070,14 @@ function render(realT) {
   }
   pass.setPipeline(G.pipes.fiber); pass.draw(FIB_SEG * 6, N_FIB);
   // the ship stands above the water only; from below, the surface shader draws its hull and wake
-  if (SHIP.on && cam.eye[1] > SURF) { pass.setVertexBuffer(0, G.shipBuf); pass.setPipeline(G.pipes.ship); pass.draw(G.shipN); }
+  // the ship: above water from above, its underwater body, propeller and wash from below
+  if (SHIP.on && Math.hypot(SHIP.pos[0] - cam.eye[0], SHIP.pos[2] - cam.eye[2]) < 70) {
+    pass.setVertexBuffer(0, G.shipBuf); pass.setPipeline(G.pipes.ship); pass.draw(G.shipN);
+    if (cam.eye[1] < SURF) {
+      pass.setVertexBuffer(0, G.propBuf); pass.setPipeline(G.pipes.prop); pass.draw(G.propN);
+      pass.setPipeline(G.pipes.wash); pass.draw(6, WASH_N);
+    }
+  }
   if (CR.n) {
     G.device.queue.writeBuffer(G.creBuf, 0, CR.data, 0, CR.n * 12);
     pass.setPipeline(G.pipes.cre); pass.draw(6, CR.n);
