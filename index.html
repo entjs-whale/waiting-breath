@@ -1,0 +1,3344 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#060c18">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="기다리는 숨">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="icon-192.png">
+<style>:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif}[hidden]{display:none!important}</style>
+<title>기다리는 숨</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=Gowun+Dodum&display=swap">
+<style>
+/* Layout: a dark water room. The live scene fills the whole frame; a caption sits low like a subtitle
+   in a gallery; a short row of thread-coloured controls rests in the corner and fades when idle.
+   One deliberate dark look: the piece happens under indigo water, so the page never turns light. */
+:root{
+  color-scheme:dark;
+  --deep:#060c18;      /* indigo at depth, the room the piece hangs in */
+  --indigo:#11293d;    /* mid water, panels */
+  --jade:#a7c8c2;      /* pale 옥색 near the surface */
+  --paper:#ece4d2;     /* hanji, the air above */
+  --thread:#d8c7a0;    /* unbleached wool thread, the one accent */
+  --muted:#8ea2a6;
+  --f-display:"Gowun Batang","Nanum Myeongjo","AppleMyungjo","Batang",serif;
+  --f-ui:"Gowun Dodum","Apple SD Gothic Neo","Noto Sans KR","Malgun Gothic",system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{background:var(--deep);color:var(--paper);font-family:var(--f-ui);overflow:hidden;-webkit-font-smoothing:antialiased;word-break:keep-all;overflow-wrap:break-word}
+.stage{position:fixed;inset:0;background:var(--deep)}
+#gpu{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+#gpu.dragging{cursor:grabbing}
+body.quiet #gpu{cursor:none}
+
+/* heads-up layer: captions + controls */
+.hud{position:fixed;inset:0;pointer-events:none;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:14px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:16px calc(16px + env(safe-area-inset-bottom,0px))}
+.cap{margin:0;max-width:30ch;min-height:2.9em;text-align:center;font-family:var(--f-display);font-size:clamp(17px,2.3vw,24px);line-height:1.45;
+  color:var(--paper);text-wrap:balance;letter-spacing:.01em;text-shadow:0 1px 14px rgba(3,8,16,.85),0 0 2px rgba(3,8,16,.6);
+  opacity:0;transform:translateY(6px);transition:opacity 1.6s ease,transform 1.6s ease}
+.cap.show{opacity:1;transform:none}
+.cap[hidden]{display:none}
+.bar{pointer-events:auto;display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:8px;transition:opacity .9s ease}
+body.quiet .bar{opacity:0}
+body.quiet .bar:focus-within{opacity:1}
+.sep{width:1px;height:22px;background:color-mix(in srgb,var(--thread) 30%,transparent)}
+.b{appearance:none;font:inherit;font-size:14px;line-height:1;color:var(--paper);background:color-mix(in srgb,var(--deep) 55%,transparent);
+  border:1px solid color-mix(in srgb,var(--thread) 38%,transparent);border-radius:999px;min-height:40px;padding:0 15px;cursor:pointer;
+  display:inline-flex;align-items:center;gap:8px;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);transition:background .25s,border-color .25s}
+.b:hover{background:color-mix(in srgb,var(--indigo) 80%,transparent);border-color:color-mix(in srgb,var(--thread) 70%,transparent)}
+.b:focus-visible{outline:2px solid var(--thread);outline-offset:2px}
+.b.main{border-color:color-mix(in srgb,var(--thread) 75%,transparent);font-family:var(--f-display);font-size:15px}
+.b kbd{font:12px/1 var(--f-ui);color:var(--muted);border:1px solid color-mix(in srgb,var(--muted) 45%,transparent);border-radius:4px;padding:2px 5px}
+.b[aria-pressed="true"],.b.on{background:color-mix(in srgb,var(--thread) 88%,transparent);border-color:var(--thread);color:var(--deep)}
+.b[aria-pressed="true"]:hover,.b.on:hover{background:var(--paper);border-color:var(--paper)}
+.b[aria-pressed="true"] kbd,.b.on kbd{color:color-mix(in srgb,var(--deep) 70%,transparent);border-color:color-mix(in srgb,var(--deep) 35%,transparent)}
+.b[aria-pressed="false"]{color:color-mix(in srgb,var(--paper) 55%,transparent);border-style:dashed;border-color:color-mix(in srgb,var(--thread) 30%,transparent);background:color-mix(in srgb,var(--deep) 40%,transparent)}
+.b.on{background:var(--jade);border-color:var(--jade)}
+/* "숨이 찬다": the breath button calls for a moment */
+.b.ask{border-color:var(--jade);color:var(--paper);background:color-mix(in srgb,var(--jade) 26%,transparent);animation:ask 1.3s ease-in-out infinite}
+@keyframes ask{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--jade) 55%,transparent)}50%{box-shadow:0 0 0 9px color-mix(in srgb,var(--jade) 0%,transparent)}}
+body.short .breath i{background:var(--jade);opacity:1}
+body.short .breath{opacity:1}
+@media (pointer:coarse){.b kbd{display:none}body.quiet .bar{opacity:1}}
+@media (max-width:520px){.bar{gap:6px}.b{padding:0 11px;font-size:13px;min-height:38px}.b kbd,.sep{display:none}}
+@media (max-width:420px){.bar{gap:5px}.b{padding:0 9px;font-size:12.5px}}
+
+/* breath thread: a single wool strand that shortens while the calf holds its breath */
+/* short of breath: the dark closes in from the edges */
+.vig{position:fixed;inset:0;pointer-events:none;--vr:68%;--va:0;background:radial-gradient(ellipse 115% 100% at 50% 46%,transparent var(--vr),rgba(2,6,12,var(--va)) 100%)}
+/* her coda and the calf's answer, as two rows of dots */
+.rhythm{pointer-events:none;width:min(320px,80vw);display:flex;flex-direction:column;gap:7px;align-items:stretch;opacity:0;transition:opacity .6s}
+.rhythm.show{opacity:1}
+.rrow{position:relative;height:10px;margin:0 6px}
+.rrow i{position:absolute;top:1px;width:8px;height:8px;margin-left:-4px;border-radius:50%;border:1px solid color-mix(in srgb,var(--thread) 70%,transparent);transition:background .15s,transform .15s}
+.rrow i.lit{background:var(--thread);transform:scale(1.15)}
+.rrow.you i{border-color:var(--jade);background:var(--jade)}
+.rhythm.ok .rrow.you i{box-shadow:0 0 10px var(--jade)}
+.rhint{text-align:center;font-size:12px;color:color-mix(in srgb,var(--paper) 70%,transparent);text-shadow:0 1px 8px rgba(3,8,16,.9)}
+/* while she waits for an answer, the Coda button grows and glows */
+.b.listen{border-color:var(--thread);color:var(--paper);background:color-mix(in srgb,var(--thread) 22%,transparent);box-shadow:0 0 0 0 color-mix(in srgb,var(--thread) 60%,transparent);animation:listen 1.6s ease-in-out infinite}
+@keyframes listen{50%{box-shadow:0 0 0 10px color-mix(in srgb,var(--thread) 0%,transparent)}}
+#bCall{transition:transform .25s,background .25s,border-color .25s;touch-action:manipulation;user-select:none;-webkit-user-select:none}
+/* the closing line */
+.endcard{position:fixed;inset:0;display:grid;place-content:center;gap:10px;text-align:center;pointer-events:none;opacity:0;transition:opacity 1.6s ease;
+  padding-left:max(24px,env(safe-area-inset-left,0px));padding-right:max(24px,env(safe-area-inset-right,0px));background:radial-gradient(70% 55% at 50% 50%,rgba(3,8,16,.62),transparent)}
+.endcard.show{opacity:1}
+.endcard p{margin:0;font-family:var(--f-display);font-size:clamp(19px,2.6vw,28px);line-height:1.6;color:var(--paper);text-wrap:balance;text-shadow:0 1px 14px rgba(3,8,16,.9)}
+.endcard p.small{font-size:clamp(15px,1.9vw,19px);color:var(--thread)}
+@media (prefers-reduced-motion:reduce){.b.listen{animation:none}}
+.breath{position:fixed;top:calc(18px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);width:min(180px,40vw);height:2px;pointer-events:none;
+  background:color-mix(in srgb,var(--thread) 18%,transparent);border-radius:2px;overflow:hidden;transition:opacity .9s}
+.breath i{position:absolute;inset:0;transform-origin:center;background:var(--thread);opacity:.7;border-radius:2px}
+body.quiet .breath{opacity:.35}
+
+/* opening card */
+.intro{position:fixed;inset:0;z-index:5;display:grid;place-items:center;overflow-y:auto;
+  background:radial-gradient(120% 90% at 50% 10%,color-mix(in srgb,var(--indigo) 70%,transparent),color-mix(in srgb,var(--deep) 94%,transparent) 70%);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:calc(24px + env(safe-area-inset-top,0px)) calc(24px + env(safe-area-inset-bottom,0px));
+  transition:opacity 1.4s ease}
+.intro.gone{opacity:0;pointer-events:none}
+.card{max-width:34rem;display:flex;flex-direction:column;gap:18px}
+.eyebrow{margin:0;font-size:13px;letter-spacing:.14em;color:var(--jade)}
+.intro h1{margin:0;font-family:var(--f-display);font-weight:400;font-size:clamp(44px,9vw,84px);line-height:1.02;letter-spacing:-.01em;text-wrap:balance}
+.lede{margin:0;font-family:var(--f-display);font-size:clamp(15px,4.1vw,20px);line-height:1.75;color:var(--paper)}
+.how{margin:0;font-size:14.5px;line-height:1.65;color:var(--muted);max-width:44ch}
+.go{align-self:flex-start;appearance:none;font-family:var(--f-display);font-size:18px;color:var(--deep);background:var(--thread);border:0;border-radius:999px;
+  min-height:48px;padding:0 26px;cursor:pointer;transition:transform .15s,background .25s}
+.go:hover{background:var(--paper)}
+.go:active{transform:scale(.97)}
+.go:focus-visible{outline:2px solid var(--paper);outline-offset:3px}
+.go[disabled]{opacity:.5;cursor:default}
+.credit{margin:0;padding-top:16px;border-top:1px solid color-mix(in srgb,var(--thread) 22%,transparent);font-size:13px;line-height:1.7;color:var(--muted)}
+.credit b{font-weight:400;color:var(--paper)}
+.nogpu{margin:0;font-size:14.5px;line-height:1.6;color:var(--thread)}
+@media (prefers-reduced-motion:reduce){.cap,.intro,.bar{transition:none}.b.ask{animation:none}}
+</style>
+
+</head>
+<body>
+<div class="stage"><canvas id="gpu" aria-label="새끼 향고래의 눈으로 본 수면 아래. 어미 향고래가 곁에 있다가 깊은 바다로 내려가고, 다시 돌아온다."></canvas></div>
+
+<div class="vig" id="vig" aria-hidden="true"></div>
+<div class="breath" aria-hidden="true"><i id="breathLine"></i></div>
+<div class="endcard" id="endcard" aria-live="polite"><p>실제 엄마 향고래는 한 번에 40분 넘게<br>깊은 바다로 잠수해요.</p><p class="small">어미가 잠수하는 동안에는<br>무리의 다른 암컷이 새끼를 지켜줍니다</p></div>
+
+<div class="hud">
+  <p class="cap" id="cap" aria-live="polite"></p>
+  <div class="rhythm" id="rhythm" aria-hidden="true"><div class="rrow" id="rhTop"></div><div class="rrow you" id="rhBot"></div><span class="rhint">엄마의 리듬을 따라 Coda를 두드려요</span></div>
+  <div class="bar" role="toolbar" aria-label="장면 조작">
+    <button class="b main" id="bBreath" type="button" title="수면 위로 올라가 숨을 쉰다">숨 <kbd>Space</kbd></button>
+    <button class="b main" id="bCall" type="button" title="코다로 어미를 부른다">Coda(부르기) <kbd>C</kbd></button>
+    <span class="sep" aria-hidden="true"></span>
+    <button class="b" id="bCap" type="button" aria-pressed="true">자막</button>
+    <button class="b" id="bSound" type="button" aria-pressed="true">소리</button>
+    <button class="b" id="bFull" type="button" aria-pressed="false">전체 화면 <kbd>F</kbd></button>
+  </div>
+</div>
+
+<div class="intro" id="intro">
+  <div class="card">
+    <p class="eyebrow">숨의 바다 · 화면구성 컨셉 v1.8 · 실사 형태 + 양모펠트</p>
+    <h1>기다리는 숨</h1>
+    <p class="lede">어미 향고래가 깊은 바다로 사냥을 내려가면,<br>아직 숨이 짧은 새끼 향고래는 수면에 남아<br>기다립니다. 이 화면에서 당신은 새끼 향고래의<br>눈과 귀가 됩니다.</p>
+    <p class="how">헤드폰을 쓰면 어미의 소리가 어느 쪽, 얼마나 깊은 곳에서 오는지 들립니다. 화면을 끌어 둘러보고, 숨이 차오르면 시야가 어두워지고 심장 소리가 커져요. 그때 ‘숨’을 눌러 수면 위로 올라 숨을 쉬세요. 엄마가 부르면 ‘Coda’ 버튼을 엄마의 리듬에 맞춰 두드려 대답해 보세요. 장면은 3분 남짓 이어지고 처음으로 돌아갑니다.</p>
+    <p class="nogpu" id="nogpu" hidden></p>
+    <button class="go" id="go" type="button">들어가기</button>
+    <p class="credit">양모펠트 향고래 원작 <b>humming whales</b><br>기획·구성 <b>whales.breathe</b><br>실제 향고래의 사냥 잠수는 40분을 넘기도 합니다. 이 장면은 그 시간을 약 1분으로 줄였습니다.</p>
+  </div>
+</div>
+
+<script>
+'use strict';
+// ===================== felt whale core: shape, stuffing, skin, stroke (from the Wool-felted Sperm Whale studio) =====================
+const TAU = Math.PI * 2;
+function clamp(x, a, b) { return x < a ? a : x > b ? b : x; }
+function sstep(a, b, x) { let t = (x - a) / (b - a); t = t < 0 ? 0 : t > 1 ? 1 : t; return t * t * (3 - 2 * t); }
+function smin(a, b, k) { const h = Math.max(k - Math.abs(a - b), 0) / k; return Math.min(a, b) - h * h * k * 0.25; }
+function smax(a, b, k) { return -smin(-a, -b, k); }
+function boxComb(a, b) { const ma = a > 0 ? a : 0, mb = b > 0 ? b : 0, m = a > b ? a : b; return Math.sqrt(ma * ma + mb * mb) + (m < 0 ? m : 0); }
+function bboxD(x, y, z, b) { return Math.max(b[0] - x, x - b[3], b[1] - y, y - b[4], b[2] - z, z - b[5]); }
+function wrapA(a) { while (a > Math.PI) a -= TAU; while (a < -Math.PI) a += TAU; return a; }
+
+// ---- the pattern, in toy units (1 unit = 30 cm). Local frame: +x snout, +y up, +z the whale's left.
+const XH = 0.88, XMIN = -1.50, SMAX = XH - XMIN;
+const YM = -0.156, GAP = 0.004, MOUTH_X0 = 0.35, MOUTH_X1 = 0.76, MOUTH_Z = 0.06;
+const HINGE_X = 0.16, HINGE_Y = -0.19;
+const EYE = { x: 0.31, y: -0.085, z: 0.16, r: 0.026 };
+const CHEEK = { x: 0.30, y: -0.115, z: 0.16 };
+const BLOW = { x: 0.80, y: 0.24, z: -0.05 };
+const TEETH = [];
+
+// spermaceti head: a tall, slightly boxy block whose front face recedes toward the bottom
+const HEAD_BB = [-0.02, -0.20, -0.20, 0.92, 0.26, 0.20];
+function headW(x) { const u = clamp(x / XH, 0, 1); return 0.178 - 0.03 * u * u; }
+function sdHead(x, y, z) {
+  const bd = bboxD(x, y, z, HEAD_BB); if (bd > 0.11) return bd;
+  const H = 0.205, W = headW(x), dy = y - 0.035;
+  const ay = Math.abs(dy) / (dy < 0 ? 0.20 : H), az = Math.abs(z) / W;
+  const q = Math.cbrt(ay * ay * ay + az * az * az);
+  const d2 = (q - 1) * Math.min(H, W) * 0.92;
+  const r = 0.11, xf = XH - 0.05 * sstep(0.10, -0.20, y);
+  return boxComb(Math.max(0.02 - x, x - (xf - r)), d2 + r) - r;
+}
+const BODY_X0 = -1.30, BODY_X1 = 0.20, TAPER_X0 = -1.18;
+function bodyHW(x) {
+  const s = clamp((BODY_X1 - x) / (BODY_X1 - TAPER_X0), 0, 1);
+  // past the last knuckle the tail stock loses height and gains a little width, so it flattens into the flukes
+  // the tail stock stays tall and narrow, then thins quickly where the flukes begin
+  const tail = sstep(-1.08, -1.30, x);
+  return [(0.068 + 0.137 * (1 - Math.pow(s, 2.4))) * (1 - 0.6 * tail), 0.03 + 0.14 * (1 - Math.pow(s, 2.0)) + 0.012 * tail, 0.03 - 0.03 * s];
+}
+function sdBody(x, y, z) {
+  const hw = bodyHW(x), H = hw[0], W = hw[1];
+  const q = Math.hypot((y - hw[2]) / H, z / W);
+  return boxComb(Math.max(BODY_X0 - x, x - BODY_X1), (q - 1) * Math.min(H, W));
+}
+function sdEll(x, y, z, cx, cy, cz, rx, ry, rz) {
+  const q = Math.hypot((x - cx) / rx, (y - cy) / ry, (z - cz) / rz);
+  return (q - 1) * Math.min(rx, ry, rz);
+}
+const KNUCKLES = [];
+function buildKnuckles() {
+  KNUCKLES.length = 0;
+  [[-0.76, 1], [-0.875, 0.85], [-0.98, 0.7]].forEach(([x, s]) => {
+    const hw = bodyHW(x); KNUCKLES.push([x, hw[2] + hw[0] - 0.004, 0.034 * s, 0.026 * s, 0.022 * s]);
+  });
+}
+function sdDorsal(x, y, z) {
+  if (x > -0.30 || x < -1.10 || y < 0.0 || Math.abs(z) > 0.12) return 0.12;
+  let d = sdEll(x, y, z, -0.56, 0.150, 0, 0.14, 0.058, 0.046);
+  for (const k of KNUCKLES) d = smin(d, sdEll(x, y, z, k[0], k[1], 0, k[2], k[3], k[4]), 0.02);
+  return d;
+}
+function makeFoil(a, b, hint, c0, c1, t0, t1) {
+  const ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], len = Math.hypot(ab[0], ab[1], ab[2]);
+  const n = ab.map(v => v / len);
+  const dh = hint[0] * n[0] + hint[1] * n[1] + hint[2] * n[2];
+  let cd = [hint[0] - n[0] * dh, hint[1] - n[1] * dh, hint[2] - n[2] * dh];
+  const cl = Math.hypot(cd[0], cd[1], cd[2]); cd = cd.map(v => v / cl);
+  const td = [n[1] * cd[2] - n[2] * cd[1], n[2] * cd[0] - n[0] * cd[2], n[0] * cd[1] - n[1] * cd[0]];
+  const p = Math.max(c0, t0) + 0.04;
+  return { a, n, len, cd, td, c0, c1, t0, t1,
+    bb: [Math.min(a[0], b[0]) - p, Math.min(a[1], b[1]) - p, Math.min(a[2], b[2]) - p, Math.max(a[0], b[0]) + p, Math.max(a[1], b[1]) + p, Math.max(a[2], b[2]) + p] };
+}
+function sdFoil(F, x, y, z) {
+  const bd = bboxD(x, y, z, F.bb); if (bd > 0.11) return bd;
+  const rx = x - F.a[0], ry = y - F.a[1], rz = z - F.a[2];
+  const al = rx * F.n[0] + ry * F.n[1] + rz * F.n[2];
+  const t = clamp(al / F.len, 0, 1), tl = t * F.len;
+  const qx = rx - F.n[0] * tl, qy = ry - F.n[1] * tl, qz = rz - F.n[2] * tl;
+  const qc = qx * F.cd[0] + qy * F.cd[1] + qz * F.cd[2];
+  const qt = qx * F.td[0] + qy * F.td[1] + qz * F.td[2];
+  const c = F.c0 + (F.c1 - F.c0) * t, th = F.t0 + (F.t1 - F.t0) * t;
+  const d2 = (Math.hypot(qc / c, qt / th) - 1) * Math.min(c, th);
+  return boxComb(Math.max(-al, al - F.len), d2 + 0.01) - 0.01;
+}
+// horizontal flukes: span runs left-right (z), chord along x, thickness along y
+const FLUKE_L = makeFoil([-1.10, 0.0, 0.015], [-1.36, 0.0, 0.45], [1, 0, 0], 0.15, 0.05, 0.032, 0.013);
+const FLUKE_R = makeFoil([-1.10, 0.0, -0.015], [-1.36, 0.0, -0.45], [1, 0, 0], 0.15, 0.05, 0.032, 0.013);
+// sperm whale flukes, seen from above: each lobe is a broad triangle. The leading edge sweeps back from the tail stock
+// to a pointed tip, the trailing edge runs almost straight across, and the two lobes meet in a small notch.
+const FLK_SPAN = 0.29, FLK_BB = [-1.42, -0.07, -0.34, -0.95, 0.07, 0.34];
+function sdFluke(x, y, z) {
+  const bd = bboxD(x, y, z, FLK_BB); if (bd > 0.1) return bd;
+  const az = Math.abs(z), zn = Math.min(az / FLK_SPAN, 1);
+  const xle = -1.03 - 0.28 * Math.pow(zn, 1.5), sle = 0.42 * Math.sqrt(zn) / FLK_SPAN;
+  const nw = 0.05, notch = Math.max(0, 1 - az / nw);
+  const xte = -1.30 - 0.04 * zn * zn + 0.05 * notch, ste = 0.08 * zn / FLK_SPAN + (notch > 0 ? 0.05 / nw : 0);
+  const d2 = Math.max(az - FLK_SPAN, (x - xle) / Math.hypot(1, sle), (xte - x) / Math.hypot(1, ste));
+  const chord = Math.max(xle - xte, 1e-3), u = clamp((xle - x) / chord, 0, 1);
+  // thickest just behind the leading edge and near the root, thin toward the trailing edge and the tips
+  const prof = Math.sqrt(Math.max(0, 1 - u)) * Math.min(1, 0.45 + u * 5);
+  const th = 0.012 + (0.010 + 0.016 * (1 - zn)) * prof;
+  return boxComb(d2 + 0.006, Math.abs(y) - th + 0.006) - 0.006;
+}
+const FLIP_ROOT_L = [-0.04, -0.14, 0.10], FLIP_ROOT_R = [-0.04, -0.14, -0.10];
+const FLIP_L = makeFoil(FLIP_ROOT_L, [-0.19, -0.23, 0.28], [1, 0, 0], 0.088, 0.07, 0.022, 0.014);
+const FLIP_R = makeFoil(FLIP_ROOT_R, [-0.19, -0.23, -0.28], [1, 0, 0], 0.088, 0.07, 0.022, 0.014);
+
+const JAW_BB = [-0.30, -0.27, -0.13, 0.81, -0.08, 0.13];
+// the lower jaw is narrow at the tip and widens back into the throat, where it rises and disappears into the chest
+function jawWidth(x) { return 0.058 - 0.025 * clamp((x - 0.10) / 0.67, 0, 1) + 0.034 * sstep(0.24, -0.12, x); }
+function sdJaw(x, y, z) {
+  const bd = bboxD(x, y, z, JAW_BB); if (bd > 0.08) return bd;
+  const v = clamp((x - 0.10) / 0.67, 0, 1), back = sstep(0.20, -0.24, x);
+  const W = jawWidth(x), H = 0.033 + 0.014 * back, yc = -0.215 + 0.004 * v + 0.085 * back * back, r = 0.025;
+  const q = Math.hypot((y - yc) / H, z / W);
+  return boxComb(Math.max(-0.26 - x, x - (0.77 - r)), (q - 1) * Math.min(H, W) + r) - r;
+}
+// head and body as one continuous sweep: the boxy head section eases into the round body over the chest,
+// so there is no seam where two shapes overlap (a smooth union of the two used to swell into a collar there)
+function sdTrunk(x, y, z) {
+  const t = sstep(-0.10, 0.42, x);
+  const hw = bodyHW(x);
+  const W = hw[1] + (headW(x) - hw[1]) * t;
+  const yc = hw[2] + (0.035 - hw[2]) * t;
+  const dy = y - yc;
+  const H = dy < 0 ? hw[0] + (0.20 - hw[0]) * t : hw[0] + (0.205 - hw[0]) * t;
+  const n = 2 + 1.0 * t;
+  const q = Math.pow(Math.pow(Math.abs(dy) / H, n) + Math.pow(Math.abs(z) / W, n), 1 / n);
+  const d2 = (q - 1) * Math.min(H, W) * (1 - 0.06 * t);
+  if (x > 0) { const r = 0.11, xf = XH - 0.05 * sstep(0.10, -0.20, y); return boxComb(x - (xf - r), d2 + r) - r; }
+  return boxComb(BODY_X0 - x, d2);
+}
+function sdMainBody(x, y, z) {
+  let d = sdTrunk(x, y, z);
+  d = smin(d, sdDorsal(x, y, z), 0.05);
+  const kj = 0.010 + 0.075 * (1 - sstep(0.20, 0.46, x));
+  return smin(d, sdJaw(x, y, z), kj);
+}
+function sdFlukes(x, y, z) { return sdFluke(x, y, z); }
+function sdFlippers(x, y, z) { return Math.min(sdFoil(FLIP_L, x, y, z), sdFoil(FLIP_R, x, y, z)); }
+function sdAppend(x, y, z) { return Math.min(sdFlukes(x, y, z), sdFlippers(x, y, z)); }
+function sdUncut(x, y, z) {
+  let d = sdMainBody(x, y, z);
+  d = smin(d, sdFluke(x, y, z), 0.05);
+  d = smin(d, sdFoil(FLIP_L, x, y, z), 0.035);
+  d = smin(d, sdFoil(FLIP_R, x, y, z), 0.035);
+  return d;
+}
+function sdCarve(x, y, z) { return Math.max(Math.abs(y - YM) - GAP, MOUTH_X0 - x, x - MOUTH_X1, Math.abs(z) - MOUTH_Z); }
+function buildTeeth() {
+  TEETH.length = 0;
+  for (let k = 0; k < 5; k++) {
+    const x = 0.39 + 0.075 * k, zz = Math.max(0.019, 0.55 * jawWidth(x));
+    for (const s of [1, -1]) TEETH.push([x, YM - GAP + 0.002, zz * s, 0.0115]);
+  }
+}
+function sdTeeth(x, y, z) {
+  let d = 1e9;
+  for (let i = 0; i < TEETH.length; i++) {
+    const t = TEETH[i], rx = t[3] * 0.9, ry = t[3] * 1.05;
+    d = Math.min(d, (Math.hypot((x - t[0]) / rx, (y - t[1]) / ry, (z - t[2]) / rx) - 1) * rx);
+  }
+  return d;
+}
+function sdEyes(x, y, z) { return Math.hypot(x - EYE.x, y - EYE.y, Math.abs(z) - EYE.z) - EYE.r; }
+function sdWhale(x, y, z) {
+  const d0 = sdUncut(x, y, z);
+  let d = d0;
+  if (x > MOUTH_X0 - 0.03 && x < MOUTH_X1 + 0.03 && y < -0.13 && y > -0.23 && Math.abs(z) < 0.12) {
+    d = smax(d0, -sdCarve(x, y, z), 0.005);
+    d = Math.min(d, sdTeeth(x, y, z));
+  }
+  return Math.min(d, sdEyes(x, y, z));
+}
+function jawWeight(x, y, z) {
+  return sstep(YM + 0.008, YM - 0.004, y) * sstep(0.13, 0.30, x) * (1 - sstep(0.075, 0.11, Math.abs(z)));
+}
+function marchIn(f, from, to, steps) { // first sample where f < 0 along a segment
+  for (let i = 0; i <= steps; i++) { const t = i / steps; const v = from + (to - from) * t; if (f(v) < 0) return v; }
+  return to;
+}
+function placeFeatures() {
+  buildKnuckles(); buildTeeth();
+  EYE.z = marchIn(z => sdUncut(EYE.x, EYE.y, z), 0.32, 0.0, 800) - 0.011;
+  CHEEK.z = marchIn(z => sdUncut(CHEEK.x, CHEEK.y, z), 0.32, 0.0, 800);
+  BLOW.y = marchIn(y => sdUncut(BLOW.x, y, BLOW.z), 0.34, 0.0, 800);
+}
+
+// ---- lattice
+let LH = 0.08;
+const LO = [-1.56, -0.34, -0.56];
+let LN = [0, 0, 0], LAT = null;
+function buildLattice(h) {
+  LH = h;
+  LN = [Math.ceil((0.98 - LO[0]) / LH), Math.ceil((0.34 - LO[1]) / LH), Math.ceil((0.56 - LO[2]) / LH)];
+  const [nx, ny, nz] = LN;
+  const cellMap = new Int32Array(nx * ny * nz).fill(-1);
+  const nodeMap = new Int32Array((nx + 1) * (ny + 1) * (nz + 1)).fill(-1);
+  const rest = [], cells = [];
+  for (let k = 0; k < nz; k++) for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+    const cx = LO[0] + (i + 0.5) * LH, cy = LO[1] + (j + 0.5) * LH, cz = LO[2] + (k + 0.5) * LH;
+    if (sdWhale(cx, cy, cz) >= LH * 0.9) continue;
+    cellMap[i + j * nx + k * nx * ny] = cells.length / 8;
+    for (let b = 0; b < 8; b++) {
+      const ii = i + (b & 1), jj = j + ((b >> 1) & 1), kk = k + ((b >> 2) & 1);
+      const key = ii + jj * (nx + 1) + kk * (nx + 1) * (ny + 1);
+      if (nodeMap[key] < 0) { nodeMap[key] = rest.length / 3; rest.push(LO[0] + ii * LH, LO[1] + jj * LH, LO[2] + kk * LH); }
+      cells.push(nodeMap[key]);
+    }
+  }
+  const n = rest.length / 3, nc = cells.length / 8;
+  const R = new Float32Array(rest), C = new Int32Array(cells);
+  const TT = [[0, 1, 2, 4], [3, 2, 1, 7], [5, 1, 4, 7], [6, 2, 7, 4], [1, 2, 4, 7]];
+  const tets = new Int32Array(nc * 20), restVol = new Float32Array(nc * 5);
+  for (let c = 0; c < nc; c++) for (let t = 0; t < 5; t++) {
+    for (let v = 0; v < 4; v++) tets[(c * 5 + t) * 4 + v] = C[c * 8 + TT[t][v]];
+    restVol[c * 5 + t] = tetVol(R, tets, c * 5 + t);
+  }
+  const surf = new Uint8Array(n), drive = new Float32Array(n), tag = new Uint8Array(n);
+  const flipW = new Float32Array(n), flipS = new Int8Array(n), front = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const x = R[3 * i], y = R[3 * i + 1], z = R[3 * i + 2];
+    surf[i] = sdWhale(x, y, z) > -LH * 1.05 ? 1 : 0;
+    const app = sdAppend(x, y, z) < sdMainBody(x, y, z) - 0.005;
+    drive[i] = app ? 0.55 : 1.0;
+    tag[i] = x < -0.85 ? 1 : (x > 0.68 && Math.abs(z) < 0.17 && y > -0.13 ? 2 : 0);
+    if (sdFlippers(x, y, z) < sdMainBody(x, y, z) + 0.03 && y < -0.05 && x < 0.24 && x > -0.10 && Math.abs(z) > 0.08) {
+      const rt = z > 0 ? FLIP_ROOT_L : FLIP_ROOT_R;
+      flipW[i] = sstep(0.0, 0.14, Math.hypot(x - rt[0], y - rt[1], z - rt[2]));
+      flipS[i] = z > 0 ? 1 : -1;
+    }
+    front[i] = sstep(0.15, 0.55, x);
+  }
+  let rv = 0; for (let t = 0; t < restVol.length; t++) rv += Math.abs(restVol[t]);
+  LAT = { n, nc, nt: nc * 5, rest: R, cells: C, cellMap, tets, restVol, restTotal: rv, surf, drive, tag, flipW, flipS, front };
+  return LAT;
+}
+function tetVol(P, T, t) {
+  const a = T[t * 4] * 3, b = T[t * 4 + 1] * 3, c = T[t * 4 + 2] * 3, d = T[t * 4 + 3] * 3;
+  const ux = P[b] - P[a], uy = P[b + 1] - P[a + 1], uz = P[b + 2] - P[a + 2];
+  const vx = P[c] - P[a], vy = P[c + 1] - P[a + 1], vz = P[c + 2] - P[a + 2];
+  const wx = P[d] - P[a], wy = P[d + 1] - P[a + 1], wz = P[d + 2] - P[a + 2];
+  return ((uy * vz - uz * vy) * wx + (uz * vx - ux * vz) * wy + (ux * vy - uy * vx) * wz) / 6;
+}
+function bindCell(x, y, z) {
+  const [nx, ny, nz] = LN;
+  const fi = (x - LO[0]) / LH, fj = (y - LO[1]) / LH, fk = (z - LO[2]) / LH;
+  const i0 = Math.floor(fi), j0 = Math.floor(fj), k0 = Math.floor(fk);
+  let best = -1, bd = 1e9, bi = 0, bj = 0, bk = 0;
+  for (let r = 0; r <= 2 && best < 0; r++) {
+    for (let dk = -r; dk <= r; dk++) for (let dj = -r; dj <= r; dj++) for (let di = -r; di <= r; di++) {
+      const i = i0 + di, j = j0 + dj, k = k0 + dk;
+      if (i < 0 || j < 0 || k < 0 || i >= nx || j >= ny || k >= nz) continue;
+      const c = LAT.cellMap[i + j * nx + k * nx * ny];
+      if (c < 0) continue;
+      const dd = (fi - i - 0.5) ** 2 + (fj - j - 0.5) ** 2 + (fk - k - 0.5) ** 2;
+      if (dd < bd) { bd = dd; best = c; bi = i; bj = j; bk = k; }
+    }
+  }
+  if (best < 0) return null;
+  return [best, fi - bi, fj - bj, fk - bk];
+}
+
+// ---- surface nets on a grid, vertices slid onto the zero set
+function surfaceNets(sdf, lo, hi, g, coarse) {
+  const nx = Math.ceil((hi[0] - lo[0]) / g) + 1, ny = Math.ceil((hi[1] - lo[1]) / g) + 1, nz = Math.ceil((hi[2] - lo[2]) / g) + 1;
+  const F = new Float32Array(nx * ny * nz);
+  if (coarse) {
+    const cs = 4, cnx = Math.ceil((nx - 1) / cs) + 1, cny = Math.ceil((ny - 1) / cs) + 1, cnz = Math.ceil((nz - 1) / cs) + 1;
+    const Cg = new Float32Array(cnx * cny * cnz);
+    for (let k = 0; k < cnz; k++) for (let j = 0; j < cny; j++) for (let i = 0; i < cnx; i++)
+      Cg[i + j * cnx + k * cnx * cny] = sdf(lo[0] + i * cs * g, lo[1] + j * cs * g, lo[2] + k * cs * g);
+    const thr = cs * g * 1.9;
+    for (let k = 0; k < nz; k++) for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+      const dc = Cg[Math.min(Math.round(i / cs), cnx - 1) + Math.min(Math.round(j / cs), cny - 1) * cnx + Math.min(Math.round(k / cs), cnz - 1) * cnx * cny];
+      F[i + j * nx + k * nx * ny] = Math.abs(dc) > thr ? dc : sdf(lo[0] + i * g, lo[1] + j * g, lo[2] + k * g);
+    }
+  } else {
+    for (let k = 0; k < nz; k++) for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) F[i + j * nx + k * nx * ny] = sdf(lo[0] + i * g, lo[1] + j * g, lo[2] + k * g);
+  }
+  const cnxm = nx - 1, cnym = ny - 1;
+  const cubeIdx = new Int32Array((nx - 1) * (ny - 1) * (nz - 1)).fill(-1);
+  const pos = [];
+  const E = [[0, 1], [2, 3], [4, 5], [6, 7], [0, 2], [1, 3], [4, 6], [5, 7], [0, 4], [1, 5], [2, 6], [3, 7]];
+  const cv = new Float64Array(8);
+  for (let k = 0; k < nz - 1; k++) for (let j = 0; j < ny - 1; j++) for (let i = 0; i < nx - 1; i++) {
+    let mask = 0;
+    for (let b = 0; b < 8; b++) {
+      const v = F[(i + (b & 1)) + (j + ((b >> 1) & 1)) * nx + (k + ((b >> 2) & 1)) * nx * ny];
+      cv[b] = v; if (v < 0) mask |= 1 << b;
+    }
+    if (mask === 0 || mask === 255) continue;
+    let sx = 0, sy = 0, sz = 0, cnt = 0;
+    for (const [a, b] of E) {
+      if (((mask >> a) & 1) === ((mask >> b) & 1)) continue;
+      const t = cv[a] / (cv[a] - cv[b]);
+      const ax = a & 1, ay = (a >> 1) & 1, az = (a >> 2) & 1, bx = b & 1, by = (b >> 1) & 1, bz = (b >> 2) & 1;
+      sx += ax + (bx - ax) * t; sy += ay + (by - ay) * t; sz += az + (bz - az) * t; cnt++;
+    }
+    cubeIdx[i + j * cnxm + k * cnxm * cnym] = pos.length / 3;
+    pos.push(lo[0] + (i + sx / cnt) * g, lo[1] + (j + sy / cnt) * g, lo[2] + (k + sz / cnt) * g);
+  }
+  const cI = (i, j, k) => cubeIdx[i + j * cnxm + k * cnxm * cnym];
+  const idx = [];
+  const quad = (a, b, c, d) => { if (a >= 0 && b >= 0 && c >= 0 && d >= 0) idx.push(a, b, c, a, c, d); };
+  for (let k = 1; k < nz - 1; k++) for (let j = 1; j < ny - 1; j++) for (let i = 1; i < nx - 1; i++) {
+    const in0 = F[i + j * nx + k * nx * ny] < 0;
+    if (in0 !== (F[i + 1 + j * nx + k * nx * ny] < 0)) quad(cI(i, j - 1, k - 1), cI(i, j, k - 1), cI(i, j, k), cI(i, j - 1, k));
+    if (in0 !== (F[i + (j + 1) * nx + k * nx * ny] < 0)) quad(cI(i - 1, j, k - 1), cI(i - 1, j, k), cI(i, j, k), cI(i, j, k - 1));
+    if (in0 !== (F[i + j * nx + (k + 1) * nx * ny] < 0)) quad(cI(i - 1, j - 1, k), cI(i, j - 1, k), cI(i, j, k), cI(i - 1, j, k));
+  }
+  const nv = pos.length / 3, P = new Float32Array(pos), N = new Float32Array(nv * 3), e = g * 0.08;
+  for (let v = 0; v < nv; v++) {
+    let x = P[3 * v], y = P[3 * v + 1], z = P[3 * v + 2], gx = 0, gy = 0, gz = 0;
+    for (let it = 0; it < 3; it++) {
+      const d = sdf(x, y, z);
+      gx = sdf(x + e, y, z) - sdf(x - e, y, z); gy = sdf(x, y + e, z) - sdf(x, y - e, z); gz = sdf(x, y, z + e) - sdf(x, y, z - e);
+      const gl = Math.hypot(gx, gy, gz) / (2 * e) + 1e-9;
+      gx /= 2 * e * gl; gy /= 2 * e * gl; gz /= 2 * e * gl;
+      if (it === 2) break;
+      const step = clamp(d / gl, -0.6 * g, 0.6 * g);
+      x -= gx * step; y -= gy * step; z -= gz * step;
+    }
+    P[3 * v] = x; P[3 * v + 1] = y; P[3 * v + 2] = z;
+    const l = Math.hypot(gx, gy, gz) || 1;
+    N[3 * v] = gx / l; N[3 * v + 1] = gy / l; N[3 * v + 2] = gz / l;
+  }
+  const I = new Uint32Array(idx);
+  for (let t = 0; t < I.length; t += 3) {
+    const a = I[t] * 3, b = I[t + 1] * 3, c = I[t + 2] * 3;
+    const ux = P[b] - P[a], uy = P[b + 1] - P[a + 1], uz = P[b + 2] - P[a + 2];
+    const vx = P[c] - P[a], vy = P[c + 1] - P[a + 1], vz = P[c + 2] - P[a + 2];
+    const sn = (uy * vz - uz * vy) * (N[a] + N[b] + N[c]) + (uz * vx - ux * vz) * (N[a + 1] + N[b + 1] + N[c + 1]) + (ux * vy - uy * vx) * (N[a + 2] + N[b + 2] + N[c + 2]);
+    if (sn < 0) { const tmp = I[t + 1]; I[t + 1] = I[t + 2]; I[t + 2] = tmp; }
+  }
+  let inside = 0; for (let q = 0; q < F.length; q++) if (F[q] < 0) inside++;
+  let xmin = 1e9, xmax = -1e9; for (let v = 0; v < nv; v++) { xmin = Math.min(xmin, P[3 * v]); xmax = Math.max(xmax, P[3 * v]); }
+  return { P, N, I, nv, volume: inside * g * g * g, length: xmax - xmin };
+}
+function buildSkin(g) { return surfaceNets(sdWhale, [-1.52, -0.30, -0.52], [0.94, 0.30, 0.52], g, true); }
+// interleaved vertex data: restPos, restNormal, uvw, appendage weight, jaw weight, cell
+function buildSkinVertices(sk) {
+  const buf = new ArrayBuffer(sk.nv * 48), f = new Float32Array(buf), u = new Uint32Array(buf);
+  for (let v = 0; v < sk.nv; v++) {
+    const x = sk.P[3 * v], y = sk.P[3 * v + 1], z = sk.P[3 * v + 2], o = v * 12;
+    f[o] = x; f[o + 1] = y; f[o + 2] = z;
+    f[o + 3] = sk.N[3 * v]; f[o + 4] = sk.N[3 * v + 1]; f[o + 5] = sk.N[3 * v + 2];
+    const bc = bindCell(x, y, z) || [0, 0, 0, 0];
+    f[o + 6] = bc[1]; f[o + 7] = bc[2]; f[o + 8] = bc[3];
+    f[o + 9] = sstep(0.012, -0.012, sdAppend(x, y, z) - sdMainBody(x, y, z));
+    f[o + 10] = jawWeight(x, y, z);
+    u[o + 11] = bc[0];
+  }
+  return f;
+}
+
+// ===================== behaviour + simulation =====================
+const CFG = { stuff: 0.6, pileMM: 4.5, bpm: 42, dive: false, rise: false };
+const SQ_R = 1.6;
+const BOUND_R = 2.3, Y_MIN = 0.52, Y_MAX = 1.78;
+const S = {};
+let SIM = null, SQ = null, GRAB = null, FINGER = null;
+const SPN = 112, SDS = SMAX / (SPN - 1), SPIV = Math.round(0.76 / SDS);
+const SP = { C: new Float64Array(SPN * 3), F: new Float64Array(SPN * 3), U: new Float64Array(SPN * 3), Z: new Float64Array(SPN * 3), kV: new Float64Array(SPN), kH: new Float64Array(SPN) };
+
+function resetState() {
+  Object.assign(S, {
+    time: 0, pos: [0.3, 1.05, 0.2], yaw: 0.35, pitch: 0, pitchRate: 0, roll: 0, speed: 0.22, yawRate: 0,
+    phase: 0, waveAmp: 1, kTurn: 0, kPitch: 0, wrigAmp: 0, wrigPhase: 0, finPhase: 0, nod: 0, nodV: 0,
+    dashT: 0, wrigT: 0, backT: 0, thrashT: 0, glideT: 0, nextGlide: 9 + Math.random() * 6, gulpT: 0, codaT: 0,
+    blush: 0, jaw: 0, jawV: 0, jawT: 0, beatHz: CFG.bpm / 60, status: 'Cruising', eaten: 0, queue: 0,
+    snapCool: 0, huntT: 0, reposT: 0, wp: [1.0, 1.1, -0.6], wpT: 0, wpCenter: false, codaName: '', releaseT: 0,
+  });
+  SQ = null; GRAB = null; FINGER = null;
+  pickWaypoint(false);
+}
+function pickWaypoint(center) {
+  const r = Math.hypot(S.pos[0], S.pos[2]), dist = 1.6 + Math.random() * 1.2;
+  let a;
+  if (center || r > BOUND_R * 0.72) { a = Math.atan2(-S.pos[2], -S.pos[0]) + (Math.random() - 0.5) * 1.0; S.wpCenter = true; }
+  else { a = -S.yaw + (Math.random() - 0.5) * 1.7; S.wpCenter = false; }
+  let wx = S.pos[0] + Math.cos(a) * dist, wz = S.pos[2] + Math.sin(a) * dist;
+  const wr = Math.hypot(wx, wz), lim = BOUND_R * 0.8;
+  if (wr > lim) { wx *= lim / wr; wz *= lim / wr; }
+  S.wp = [wx, 0.75 + Math.random() * 0.7, wz]; S.wpT = 9 + Math.random() * 7;
+}
+
+// curvature of the spine: kV bends it in the vertical plane (the swimming stroke), kH in the horizontal plane (turns)
+const BODY_L = 2.0;
+function kappaV(s) {
+  const u = Math.min(s / BODY_L, 1);
+  const fl = s > BODY_L ? Math.max(0.35, 1 - (s - BODY_L) / 0.3) : 1;
+  let k = S.waveAmp * 0.66 * (0.03 + 0.97 * Math.pow(u, 2.1)) * fl * Math.sin(S.phase - TAU * s / 2.1);
+  k += S.kPitch * (0.25 + 0.75 * u) * fl;
+  k += S.nod * (1 - sstep(0.35, 0.78, s)) * 2.2;
+  k += S.wrigAmp * 0.55 * Math.sin(S.wrigPhase * 0.8 - TAU * s / 0.9 + 1.3) * (0.3 + 0.7 * u);
+  return k;
+}
+function kappaH(s) {
+  const u = Math.min(s / BODY_L, 1);
+  const fl = s > BODY_L ? Math.max(0, 1 - (s - BODY_L) / 0.2) : 1;
+  let k = S.kTurn * (0.2 + 0.8 * u) * fl;
+  k += S.wrigAmp * 0.8 * Math.sin(S.wrigPhase - TAU * s / 0.9) * (0.3 + 0.7 * u) * fl;
+  return k;
+}
+function rotStep(src, dst, aV, aH) {
+  const { F, U, Z } = SP, a = src * 3, b = dst * 3;
+  const c = Math.cos(aV), s = Math.sin(aV), c2 = Math.cos(aH), s2 = Math.sin(aH);
+  const f0 = F[a] * c + U[a] * s, f1 = F[a + 1] * c + U[a + 1] * s, f2 = F[a + 2] * c + U[a + 2] * s;
+  U[b] = U[a] * c - F[a] * s; U[b + 1] = U[a + 1] * c - F[a + 1] * s; U[b + 2] = U[a + 2] * c - F[a + 2] * s;
+  F[b] = f0 * c2 + Z[a] * s2; F[b + 1] = f1 * c2 + Z[a + 1] * s2; F[b + 2] = f2 * c2 + Z[a + 2] * s2;
+  Z[b] = Z[a] * c2 - f0 * s2; Z[b + 1] = Z[a + 1] * c2 - f1 * s2; Z[b + 2] = Z[a + 2] * c2 - f2 * s2;
+}
+function buildSpine() {
+  const { C, F, U, Z, kV, kH } = SP;
+  for (let i = 0; i < SPN; i++) { kV[i] = kappaV(i * SDS); kH[i] = kappaH(i * SDS); }
+  const p = SPIV * 3;
+  C[p] = XH - SPIV * SDS; C[p + 1] = 0; C[p + 2] = 0;
+  F[p] = 1; F[p + 1] = 0; F[p + 2] = 0; U[p] = 0; U[p + 1] = 1; U[p + 2] = 0; Z[p] = 0; Z[p + 1] = 0; Z[p + 2] = 1;
+  for (let i = SPIV; i < SPN - 1; i++) {
+    rotStep(i, i + 1, 0.5 * (kV[i] + kV[i + 1]) * SDS, 0.5 * (kH[i] + kH[i + 1]) * SDS);
+    const a = i * 3, b = a + 3;
+    for (let q = 0; q < 3; q++) C[b + q] = C[a + q] - 0.5 * (F[a + q] + F[b + q]) * SDS;
+  }
+  for (let i = SPIV; i > 0; i--) {
+    rotStep(i, i - 1, -0.5 * (kV[i] + kV[i - 1]) * SDS, -0.5 * (kH[i] + kH[i - 1]) * SDS);
+    const a = i * 3, b = a - 3;
+    for (let q = 0; q < 3; q++) C[b + q] = C[a + q] + 0.5 * (F[a + q] + F[b + q]) * SDS;
+  }
+}
+// bend a rest point along the spine (local frame)
+function bendPt(x, y, z, out, o) {
+  const s = XH - x, sc = clamp(s, 0, SMAX), fi = sc / SDS;
+  let i0 = Math.floor(fi); if (i0 >= SPN - 1) i0 = SPN - 2;
+  const t = fi - i0, t1 = 1 - t, a = i0 * 3, b = a + 3, ext = s - sc;
+  const { C, F, U, Z } = SP;
+  for (let q = 0; q < 3; q++) {
+    out[o + q] = (C[a + q] * t1 + C[b + q] * t) + (U[a + q] * t1 + U[b + q] * t) * y + (Z[a + q] * t1 + Z[b + q] * t) * z - (F[a + q] * t1 + F[b + q] * t) * ext;
+  }
+}
+let TW = null;
+function frameWorld() { // cached trig for the body frame
+  const cp = Math.cos(S.pitch), sp = Math.sin(S.pitch), cy = Math.cos(S.yaw), sy = Math.sin(S.yaw), cr = Math.cos(S.roll), sr = Math.sin(S.roll);
+  TW = [cp, sp, cy, sy, cr, sr];
+}
+function toWorld(lx, ly, lz, out, o) {
+  const [cp, sp, cy, sy, cr, sr] = TW;
+  const y0 = ly * cr - lz * sr, z0 = ly * sr + lz * cr;
+  const x1 = lx * cp - y0 * sp, y1 = lx * sp + y0 * cp;
+  out[o] = S.pos[0] + x1 * cy + z0 * sy; out[o + 1] = S.pos[1] + y1; out[o + 2] = S.pos[2] - x1 * sy + z0 * cy;
+}
+const _t3 = new Float64Array(3);
+function localToWorldBent(x, y, z, out) { bendPt(x, y, z, _t3, 0); toWorld(_t3[0], _t3[1], _t3[2], out, 0); return out; }
+const _M = [0, 0, 0];
+function mouthWorld() { return localToWorldBent(0.60, -0.19, 0, _M); }
+
+function createSim() {
+  const n = LAT.n;
+  SIM = {
+    x: new Float32Array(n * 3), prev: new Float32Array(n * 3), vel: new Float32Array(n * 3), vOld: new Float32Array(n * 3),
+    goal: new Float32Array(n * 3), br: new Float32Array(n * 3), dscale: new Float32Array(n).fill(1),
+    q: new Float32Array(LAT.nc * 4), lag: new Float32Array(n * 3), lagV: new Float32Array(n * 3), mess: new Float32Array(n),
+    posOut: new Float32Array(n * 4), leanOut: new Float32Array(n * 4),
+  };
+  for (let c = 0; c < LAT.nc; c++) SIM.q[c * 4 + 3] = 1;
+  roughenFelt();
+  computeGoals();
+  SIM.x.set(SIM.goal); SIM.prev.set(SIM.goal);
+}
+function roughenFelt() { // a freshly felted toy is a little fuzzy in patches
+  const R = LAT.rest;
+  for (let i = 0; i < LAT.n; i++) {
+    const x = R[3 * i], y = R[3 * i + 1], z = R[3 * i + 2];
+    SIM.mess[i] = clamp(0.22 + 0.16 * Math.sin(x * 9.1 + z * 5.3) * Math.cos(y * 11.7 - x * 3.1), 0, 1);
+  }
+}
+const _lp = new Float64Array(3);
+function computeGoals() {
+  buildSpine(); frameWorld();
+  const R = LAT.rest, br = SIM.br, g = SIM.goal, FW = LAT.flipW, FS = LAT.flipS;
+  // flipper trim: a slow paddle plus a tilt into turns and climbs
+  const base = 0.09 * Math.sin(S.finPhase);
+  const aL = base + 0.32 * S.kTurn + 0.55 * S.kPitch, aR = -base + 0.32 * S.kTurn - 0.55 * S.kPitch;
+  for (let i = 0; i < LAT.n; i++) {
+    let x = R[3 * i], y = R[3 * i + 1], z = R[3 * i + 2];
+    if (FW[i] > 0) {
+      const rt = FS[i] > 0 ? FLIP_ROOT_L : FLIP_ROOT_R, th = (FS[i] > 0 ? aL : aR) * FW[i];
+      const dy = y - rt[1], dz = z - rt[2], c = Math.cos(th), s = Math.sin(th);
+      y = rt[1] + dy * c - dz * s; z = rt[2] + dy * s + dz * c;
+    }
+    bendPt(x, y, z, br, 3 * i);
+    toWorld(br[3 * i], br[3 * i + 1], br[3 * i + 2], g, 3 * i);
+  }
+}
+
+function extractRotation(A, q, o) {
+  let qx = q[o], qy = q[o + 1], qz = q[o + 2], qw = q[o + 3];
+  for (let it = 0; it < 3; it++) {
+    const xx = qx * qx, yy = qy * qy, zz = qz * qz, xy = qx * qy, xz = qx * qz, yz = qy * qz, wx = qw * qx, wy = qw * qy, wz = qw * qz;
+    const r00 = 1 - 2 * (yy + zz), r10 = 2 * (xy + wz), r20 = 2 * (xz - wy);
+    const r01 = 2 * (xy - wz), r11 = 1 - 2 * (xx + zz), r21 = 2 * (yz + wx);
+    const r02 = 2 * (xz + wy), r12 = 2 * (yz - wx), r22 = 1 - 2 * (xx + yy);
+    const ox = (r10 * A[2] - r20 * A[1]) + (r11 * A[5] - r21 * A[4]) + (r12 * A[8] - r22 * A[7]);
+    const oy = (r20 * A[0] - r00 * A[2]) + (r21 * A[3] - r01 * A[5]) + (r22 * A[6] - r02 * A[8]);
+    const oz = (r00 * A[1] - r10 * A[0]) + (r01 * A[4] - r11 * A[3]) + (r02 * A[7] - r12 * A[6]);
+    const den = Math.abs(r00 * A[0] + r10 * A[1] + r20 * A[2] + r01 * A[3] + r11 * A[4] + r21 * A[5] + r02 * A[6] + r12 * A[7] + r22 * A[8]) + 1e-12;
+    const vx = ox / den, vy = oy / den, vz = oz / den, w = Math.hypot(vx, vy, vz);
+    if (w < 1e-7) break;
+    const ha = 0.5 * Math.min(w, 1.5), s = Math.sin(ha) / w, c = Math.cos(ha);
+    const ax = vx * s, ay = vy * s, az = vz * s;
+    const nx = c * qx + qw * ax + ay * qz - az * qy;
+    const ny = c * qy + qw * ay + az * qx - ax * qz;
+    const nz = c * qz + qw * az + ax * qy - ay * qx;
+    const nw = c * qw - ax * qx - ay * qy - az * qz;
+    const l = Math.hypot(nx, ny, nz, nw);
+    qx = nx / l; qy = ny / l; qz = nz / l; qw = nw / l;
+  }
+  q[o] = qx; q[o + 1] = qy; q[o + 2] = qz; q[o + 3] = qw;
+}
+const _A = new Float64Array(9);
+function solveShape(ks) {
+  const x = SIM.x, br = SIM.br, C = LAT.cells, Q = SIM.q;
+  for (let c = 0; c < LAT.nc; c++) {
+    const b = c * 8;
+    let cx = 0, cy = 0, cz = 0, rx = 0, ry = 0, rz = 0;
+    for (let k = 0; k < 8; k++) { const i = C[b + k] * 3; cx += x[i]; cy += x[i + 1]; cz += x[i + 2]; rx += br[i]; ry += br[i + 1]; rz += br[i + 2]; }
+    cx *= 0.125; cy *= 0.125; cz *= 0.125; rx *= 0.125; ry *= 0.125; rz *= 0.125;
+    _A.fill(0);
+    for (let k = 0; k < 8; k++) {
+      const i = C[b + k] * 3;
+      const px = x[i] - cx, py = x[i + 1] - cy, pz = x[i + 2] - cz;
+      const qx = br[i] - rx, qy = br[i + 1] - ry, qz = br[i + 2] - rz;
+      _A[0] += px * qx; _A[1] += py * qx; _A[2] += pz * qx;
+      _A[3] += px * qy; _A[4] += py * qy; _A[5] += pz * qy;
+      _A[6] += px * qz; _A[7] += py * qz; _A[8] += pz * qz;
+    }
+    extractRotation(_A, Q, c * 4);
+    const qx = Q[c * 4], qy = Q[c * 4 + 1], qz = Q[c * 4 + 2], qw = Q[c * 4 + 3];
+    const xx = qx * qx, yy = qy * qy, zz = qz * qz, xy = qx * qy, xz = qx * qz, yz = qy * qz, wx = qw * qx, wy = qw * qy, wz = qw * qz;
+    const r00 = 1 - 2 * (yy + zz), r10 = 2 * (xy + wz), r20 = 2 * (xz - wy);
+    const r01 = 2 * (xy - wz), r11 = 1 - 2 * (xx + zz), r21 = 2 * (yz + wx);
+    const r02 = 2 * (xz + wy), r12 = 2 * (yz - wx), r22 = 1 - 2 * (xx + yy);
+    for (let k = 0; k < 8; k++) {
+      const i = C[b + k] * 3;
+      const qx2 = br[i] - rx, qy2 = br[i + 1] - ry, qz2 = br[i + 2] - rz;
+      const gx = cx + r00 * qx2 + r01 * qy2 + r02 * qz2;
+      const gy = cy + r10 * qx2 + r11 * qy2 + r12 * qz2;
+      const gz = cz + r20 * qx2 + r21 * qy2 + r22 * qz2;
+      x[i] += (gx - x[i]) * ks; x[i + 1] += (gy - x[i + 1]) * ks; x[i + 2] += (gz - x[i + 2]) * ks;
+    }
+  }
+}
+function solveVolume(h, compliance, vScale) {
+  const x = SIM.x, T = LAT.tets, RV = LAT.restVol, alpha = compliance / (h * h);
+  for (let t = 0; t < LAT.nt; t++) {
+    const a = T[t * 4] * 3, b = T[t * 4 + 1] * 3, c = T[t * 4 + 2] * 3, d = T[t * 4 + 3] * 3;
+    const p0x = x[a], p0y = x[a + 1], p0z = x[a + 2];
+    const e1x = x[b] - p0x, e1y = x[b + 1] - p0y, e1z = x[b + 2] - p0z;
+    const e2x = x[c] - p0x, e2y = x[c + 1] - p0y, e2z = x[c + 2] - p0z;
+    const e3x = x[d] - p0x, e3y = x[d + 1] - p0y, e3z = x[d + 2] - p0z;
+    const g3x = e1y * e2z - e1z * e2y, g3y = e1z * e2x - e1x * e2z, g3z = e1x * e2y - e1y * e2x;
+    const g1x = e2y * e3z - e2z * e3y, g1y = e2z * e3x - e2x * e3z, g1z = e2x * e3y - e2y * e3x;
+    const g2x = e3y * e1z - e3z * e1y, g2y = e3z * e1x - e3x * e1z, g2z = e3x * e1y - e3y * e1x;
+    const g0x = -(g1x + g2x + g3x), g0y = -(g1y + g2y + g3y), g0z = -(g1z + g2z + g3z);
+    const vol = (g3x * e3x + g3y * e3y + g3z * e3z) / 6;
+    const C = (vol - RV[t] * vScale) * 6;
+    const w = g0x * g0x + g0y * g0y + g0z * g0z + g1x * g1x + g1y * g1y + g1z * g1z + g2x * g2x + g2y * g2y + g2z * g2z + g3x * g3x + g3y * g3y + g3z * g3z;
+    if (w < 1e-14) continue;
+    const s = -C / (w + alpha);
+    x[a] += g0x * s; x[a + 1] += g0y * s; x[a + 2] += g0z * s;
+    x[b] += g1x * s; x[b + 1] += g1y * s; x[b + 2] += g1z * s;
+    x[c] += g2x * s; x[c + 1] += g2y * s; x[c + 2] += g2z * s;
+    x[d] += g3x * s; x[d + 1] += g3y * s; x[d + 2] += g3z * s;
+  }
+}
+function measureVolume() { let v = 0; for (let t = 0; t < LAT.nt; t++) v += Math.abs(tetVol(SIM.x, LAT.tets, t)); return v; }
+
+function simulate(dt) {
+  if (dt <= 0) return;
+  computeGoals();
+  const n = LAT.n, x = SIM.x, prev = SIM.prev, vel = SIM.vel, g = SIM.goal, ds = SIM.dscale, dr = LAT.drive;
+  const st = CFG.stuff;
+  const ks = 0.16 + 0.5 * st, compl = (1 - st) * 5e-9, vScale = 0.94 + 0.10 * st;
+  const SUB = 4, h = dt / SUB, damp = Math.exp(-2.4 * h), kDrive = 240 * h * h;
+  let gx = 0, gy = 0, gz = 0;
+  if (GRAB) { // pull toward the hand, but never more than a short reach from where the body wants that point
+    const gi = GRAB.ids[0] * 3;
+    let dx = GRAB.target[0] - g[gi], dy = GRAB.target[1] - g[gi + 1], dz = GRAB.target[2] - g[gi + 2];
+    const l = Math.hypot(dx, dy, dz), lim = 0.42;
+    if (l > lim) { dx *= lim / l; dy *= lim / l; dz *= lim / l; }
+    gx = g[gi] + dx; gy = g[gi + 1] + dy; gz = g[gi + 2] + dz;
+  }
+  for (let sub = 0; sub < SUB; sub++) {
+    for (let i = 0; i < n * 3; i++) { vel[i] *= damp; prev[i] = x[i]; x[i] += vel[i] * h; }
+    for (let i = 0; i < n; i++) {
+      const c = kDrive * dr[i] * ds[i];
+      x[3 * i] += (g[3 * i] - x[3 * i]) * c; x[3 * i + 1] += (g[3 * i + 1] - x[3 * i + 1]) * c; x[3 * i + 2] += (g[3 * i + 2] - x[3 * i + 2]) * c;
+    }
+    if (GRAB) {
+      for (let k = 0; k < GRAB.ids.length; k++) {
+        const i = GRAB.ids[k] * 3, w = GRAB.w[k] * 0.3;
+        x[i] += (gx + GRAB.off[3 * k] - x[i]) * w; x[i + 1] += (gy + GRAB.off[3 * k + 1] - x[i + 1]) * w; x[i + 2] += (gz + GRAB.off[3 * k + 2] - x[i + 2]) * w;
+      }
+    }
+    solveShape(ks);
+    solveVolume(h, compl, vScale);
+    if (FINGER && FINGER.active) {
+      const c = FINGER.c, r = 0.07;
+      for (let i = 0; i < n; i++) {
+        const dx = x[3 * i] - c[0], dy = x[3 * i + 1] - c[1], dz = x[3 * i + 2] - c[2], d2 = dx * dx + dy * dy + dz * dz;
+        if (d2 < r * r && d2 > 1e-10) { const k = r / Math.sqrt(d2); x[3 * i] = c[0] + dx * k; x[3 * i + 1] = c[1] + dy * k; x[3 * i + 2] = c[2] + dz * k; }
+      }
+    }
+    const ih = 1 / h;
+    for (let i = 0; i < n * 3; i++) vel[i] = (x[i] - prev[i]) * ih;
+  }
+}
+
+// pile springs → per-node lean vector + messiness; packed positions for the GPU
+let smoothT = 0;
+function updatePile(dt) {
+  const n = LAT.n, vel = SIM.vel, vo = SIM.vOld, lag = SIM.lag, lv = SIM.lagV, mess = SIM.mess;
+  const cy = Math.cos(S.yaw), sy = Math.sin(S.yaw);
+  const id = dt > 1e-5 ? 1 / dt : 0, Kp = 160, Cp = 10;
+  const layX = -0.32 * cy, layZ = 0.32 * sy; // the pile lies gently toward the tail
+  const sm = smoothT > 0 ? Math.min(1, dt * 3.2) : 0;
+  if (smoothT > 0) smoothT -= dt;
+  for (let i = 0; i < n; i++) {
+    for (let a = 0; a < 3; a++) {
+      const j = 3 * i + a;
+      let acc = (vel[j] - vo[j]) * id; acc = clamp(acc, -60, 60);
+      vo[j] = vel[j];
+      lv[j] += (-Kp * lag[j] - Cp * lv[j] - acc * Kp * 0.005) * dt;
+      lag[j] = clamp(lag[j] + lv[j] * dt, -1.1, 1.1);
+      if (sm) { lag[j] *= 1 - sm; lv[j] *= 1 - sm; }
+    }
+    if (sm) mess[i] *= 1 - sm;
+    const o = 4 * i;
+    SIM.leanOut[o] = layX + lag[3 * i]; SIM.leanOut[o + 1] = lag[3 * i + 1]; SIM.leanOut[o + 2] = layZ + lag[3 * i + 2]; SIM.leanOut[o + 3] = mess[i];
+    SIM.posOut[o] = SIM.x[3 * i]; SIM.posOut[o + 1] = SIM.x[3 * i + 1]; SIM.posOut[o + 2] = SIM.x[3 * i + 2]; SIM.posOut[o + 3] = 1;
+  }
+}
+function ruffle(cx, cy, cz, rad, amt) { // rough up the felt near a world point
+  const x = SIM.x, m = SIM.mess;
+  for (let i = 0; i < LAT.n; i++) {
+    const d = Math.hypot(x[3 * i] - cx, x[3 * i + 1] - cy, x[3 * i + 2] - cz);
+    if (d < rad) m[i] = Math.min(1, m[i] + amt * (1 - d / rad));
+  }
+}
+
+// ===================== realistic sperm whale: shape =====================
+// Proportions from field guides and photographs, for a body 2.22 units from the front of the head to the fluke notch:
+// the head is about a third of the body; the eye sits just behind and above the corner of the mouth;
+// the flippers come well behind the eye; the narrow lower jaw stops a little short of the front of the head;
+// the body is deepest just behind the head, with a low hump two thirds of the way back, knuckles on the tail stock
+// and a keel beneath it.
+EYE.x = 0.33; EYE.y = -0.122;
+function hermite(T, x) { // T: [[x, value], ...] with x descending; smooth curve through every point
+  const n = T.length;
+  if (x >= T[0][0]) return T[0][1];
+  if (x <= T[n - 1][0]) return T[n - 1][1];
+  let i = 0; while (x < T[i + 1][0]) i++;
+  const x0 = T[i][0], x1 = T[i + 1][0], v0 = T[i][1], v1 = T[i + 1][1];
+  const m = k => { const a = T[Math.max(k - 1, 0)], b = T[Math.min(k + 1, n - 1)]; return (b[1] - a[1]) / (b[0] - a[0]); };
+  const h = x1 - x0, t = (x - x0) / h, m0 = m(i) * h, m1 = m(i + 1) * h, t2 = t * t, t3 = t2 * t;
+  return (2 * t3 - 3 * t2 + 1) * v0 + (t3 - 2 * t2 + t) * m0 + (-2 * t3 + 3 * t2) * v1 + (t3 - t2) * m1;
+}
+// side profile: the back line and the belly line; and the half-width seen from above
+const R_TOP = [[0.88, 0.172], [0.835, 0.193], [0.72, 0.200], [0.50, 0.201], [0.30, 0.198], [0.10, 0.193], [-0.15, 0.187], [-0.38, 0.180], [-0.52, 0.170], [-0.66, 0.146], [-0.82, 0.112], [-0.98, 0.080], [-1.15, 0.050], [-1.32, 0.02]];
+const R_BOT = [[0.88, -0.055], [0.845, -0.118], [0.78, -0.148], [0.55, -0.157], [0.38, -0.159], [0.26, -0.170], [0.12, -0.184], [-0.10, -0.190], [-0.35, -0.183], [-0.55, -0.162], [-0.75, -0.120], [-0.95, -0.080], [-1.15, -0.048], [-1.32, -0.02]];
+const R_WID = [[0.88, 0.108], [0.84, 0.127], [0.72, 0.135], [0.50, 0.137], [0.30, 0.139], [0.10, 0.142], [-0.10, 0.142], [-0.30, 0.134], [-0.50, 0.113], [-0.70, 0.083], [-0.90, 0.055], [-1.05, 0.040], [-1.18, 0.034], [-1.32, 0.032]];
+function sdTrunkR(x, y, z) {
+  const xc = clamp(x, -1.32, 0.88);
+  const top = hermite(R_TOP, xc), bot = hermite(R_BOT, xc), W0 = hermite(R_WID, xc);
+  const yc = (top + bot) / 2, H = (top - bot) / 2, dy = y - yc;
+  const hd = sstep(0.10, 0.45, xc);
+  const up = dy > 0 ? Math.min(dy / H, 1.2) : 0;
+  const W = W0 * (1 - 0.22 * hd * up * up);           // the head narrows toward its top
+  const n = 2 + 0.7 * hd;                             // boxy in the head, round in the body
+  const q = Math.pow(Math.pow(Math.abs(dy) / H, n) + Math.pow(Math.abs(z) / W, n), 1 / n);
+  const d2 = (q - 1) * Math.min(H, W) * 0.92;
+  if (x > 0.5) { // the blunt front of the head, very slightly rounded when seen from above
+    const r = 0.06, xf = 0.88 - 0.035 * Math.min(1, (z / W0) * (z / W0));
+    return boxComb(x - (xf - r), d2 + r) - r;
+  }
+  return Math.max(d2, -1.25 - x);
+}
+function sdDorsalR(x, y, z) {
+  if (x > -0.28 || x < -1.1 || y < 0.0 || Math.abs(z) > 0.1) return 0.1;
+  let d = sdEll(x, y, z, -0.53, hermite(R_TOP, -0.53) - 0.010, 0, 0.11, 0.036, 0.028);
+  for (const [kx, s] of [[-0.68, 1], [-0.77, 0.82], [-0.86, 0.65], [-0.94, 0.48]]) {
+    d = smin(d, sdEll(x, y, z, kx, hermite(R_TOP, kx) - 0.004, 0, 0.03 * s, 0.018 * s, 0.016 * s), 0.015);
+  }
+  return d;
+}
+function sdKeel(x, y, z) {
+  if (x > -0.75 || x < -1.3 || y > 0.0) return 0.1;
+  return sdEll(x, y, z, -1.0, hermite(R_BOT, -1.0) + 0.008, 0, 0.16, 0.022, 0.015);
+}
+// the lower jaw: a narrow rod under the head that widens into the throat behind the corner of the mouth
+const RJAW_BB = [0.10, -0.22, -0.11, 0.76, -0.12, 0.11];
+function sdJawR(x, y, z) {
+  const bd = bboxD(x, y, z, RJAW_BB); if (bd > 0.08) return bd;
+  const back = sstep(0.35, 0.17, x);
+  const tip = clamp((x - 0.35) / 0.38, 0, 1);
+  const W = 0.032 - 0.016 * tip + 0.028 * back, H = 0.019 - 0.006 * tip + 0.008 * back;
+  const yc = -0.166 + 0.004 * tip, r = 0.015;
+  const q = Math.hypot((y - yc) / H, z / W);
+  return boxComb(Math.max(0.14 - x, x - (0.73 - r)), (q - 1) * Math.min(H, W) + r) - r;
+}
+function sdMainBody(x, y, z) {
+  let d = sdTrunkR(x, y, z);
+  d = smin(d, sdDorsalR(x, y, z), 0.04);
+  d = smin(d, sdKeel(x, y, z), 0.03);
+  return smin(d, sdJawR(x, y, z), 0.004 + 0.05 * sstep(0.38, 0.20, x));
+}
+// short, broad, spoon-shaped flippers set low behind the eye
+const RFLIP_L = makeFoil([0.17, -0.132, 0.094], [-0.01, -0.168, 0.182], [0, 1, 0], 0.074, 0.036, 0.020, 0.0135);
+const RFLIP_R = makeFoil([0.17, -0.132, -0.094], [-0.01, -0.168, -0.182], [0, 1, 0], 0.074, 0.036, 0.020, 0.0135);
+FLIP_ROOT_L.splice(0, 3, 0.17, -0.132, 0.094); FLIP_ROOT_R.splice(0, 3, 0.17, -0.132, -0.094);
+function sdPaddle(F, x, y, z) {
+  const bd = bboxD(x, y, z, F.bb); if (bd > 0.1) return bd;
+  const rx = x - F.a[0], ry = y - F.a[1], rz = z - F.a[2];
+  const al = rx * F.n[0] + ry * F.n[1] + rz * F.n[2];
+  const t = clamp(al / F.len, 0, 1), tl = t * F.len;
+  const qx = rx - F.n[0] * tl, qy = ry - F.n[1] * tl, qz = rz - F.n[2] * tl;
+  const qc = qx * F.cd[0] + qy * F.cd[1] + qz * F.cd[2], qt = qx * F.td[0] + qy * F.td[1] + qz * F.td[2];
+  // a spoon: a little wider past the middle, rounding off at the tip
+  const sh = (0.78 + 0.5 * t * (1 - t) * 2) * Math.sqrt(Math.max(0, 1 - Math.pow(t, 5)));
+  const c = Math.max(F.c0 * sh, 0.004), th = Math.max((F.t0 + (F.t1 - F.t0) * t) * Math.sqrt(Math.max(0, 1 - Math.pow(t, 6))), 0.004);
+  return Math.max((Math.hypot(qc / c, qt / th) - 1) * Math.min(c, th) * 0.9, -al, al - F.len);
+}
+function sdFlippers(x, y, z) { return Math.min(sdFoil(RFLIP_L, x, y, z), sdFoil(RFLIP_R, x, y, z)); }
+function sdUncut(x, y, z) {
+  let d = sdMainBody(x, y, z);
+  d = smin(d, sdFluke(x, y, z), 0.035);
+  d = smin(d, sdFoil(RFLIP_L, x, y, z), 0.03);
+  d = smin(d, sdFoil(RFLIP_R, x, y, z), 0.03);
+  return d;
+}
+function sdWhale(x, y, z) {
+  let d = sdUncut(x, y, z);
+  // the eye sits in a shallow almond hollow under a soft brow
+  if (Math.abs(x - EYE.x) < 0.08 && Math.abs(y - EYE.y) < 0.06) {
+    const zs = (z < 0 ? -1 : 1) * EYE.z;
+    d = smax(d, -sdEll(x, y, z, EYE.x, EYE.y, zs, 0.030, 0.014, 0.007), 0.005);
+    d = smin(d, sdEll(x, y, z, EYE.x - 0.004, EYE.y + 0.019, zs - 0.006, 0.040, 0.010, 0.010), 0.012);
+  }
+  return d;
+}
+function placeFeatures() {
+  buildKnuckles(); buildTeeth();
+  EYE.z = marchIn(z => sdUncut(EYE.x, EYE.y, z), 0.32, 0.0, 800);
+  CHEEK.z = marchIn(z => sdUncut(CHEEK.x, CHEEK.y, z), 0.32, 0.0, 800);
+  BLOW.y = marchIn(y => sdUncut(BLOW.x, y, BLOW.z), 0.34, 0.0, 800);
+}
+CFG.stuff = 0.95; // a whale, not a stuffed toy: the body holds its shape
+
+// flukes with a real notch: two broad triangles whose trailing edges sweep forward into a deep V at the centre line
+function sdFluke(x, y, z) {
+  const bd = bboxD(x, y, z, FLK_BB); if (bd > 0.1) return bd;
+  const az = Math.abs(z), zn = Math.min(az / FLK_SPAN, 1);
+  const xle = -1.06 - 0.25 * Math.pow(zn, 1.4), sle = 0.35 * Math.pow(Math.max(zn, 1e-3), 0.4) / FLK_SPAN;
+  const nw = 0.075, nd = 0.085, inV = az < nw;
+  const xte = inV ? -1.255 - nd * (az / nw) : -1.34 - 0.03 * (zn - nw / FLK_SPAN) * (zn - nw / FLK_SPAN) * 4;
+  const ste = inV ? nd / nw : 0.24 * Math.max(zn - nw / FLK_SPAN, 0) / FLK_SPAN;
+  const d2 = Math.max(az - FLK_SPAN, (x - xle) / Math.hypot(1, sle), (xte - x) / Math.hypot(1, ste));
+  const chord = Math.max(xle - xte, 1e-3), u = clamp((xle - x) / chord, 0, 1);
+  const prof = Math.sqrt(Math.max(0, 1 - u)) * Math.min(1, 0.45 + u * 5);
+  const th = 0.011 + (0.009 + 0.016 * (1 - zn)) * prof;
+  return boxComb(d2 + 0.005, Math.abs(y) - th + 0.005) - 0.005;
+}
+// spoon-shaped flippers: narrow where they join the body, broad and round at the outer end
+function sdUnevenCap2(px, py, r1, r2, h) {
+  px = Math.abs(px);
+  const b = (r1 - r2) / h, a = Math.sqrt(1 - b * b), k = -b * px + a * py;
+  if (k < 0) return Math.hypot(px, py) - r1;
+  if (k > a * h) return Math.hypot(px, py - h) - r2;
+  return px * a + py * b - r1;
+}
+function sdSpoon(F, x, y, z) {
+  const bd = bboxD(x, y, z, F.bb); if (bd > 0.1) return bd;
+  const rx = x - F.a[0], ry = y - F.a[1], rz = z - F.a[2];
+  const al = rx * F.n[0] + ry * F.n[1] + rz * F.n[2];
+  const qc = rx * F.cd[0] + ry * F.cd[1] + rz * F.cd[2], qt = rx * F.td[0] + ry * F.td[1] + rz * F.td[2];
+  const t = clamp(al / F.len, 0, 1);
+  const d2 = sdUnevenCap2(qc - 0.006 * t, al, 0.030, 0.045, F.len - 0.045);
+  const th = 0.013 - 0.004 * t, rr = 0.006;
+  return boxComb(d2 + rr, Math.abs(qt) - th + rr) - rr;
+}
+function sdFlippers(x, y, z) { return Math.min(sdSpoon(RFLIP_L, x, y, z), sdSpoon(RFLIP_R, x, y, z)); }
+function sdUncut(x, y, z) {
+  let d = sdMainBody(x, y, z);
+  d = smin(d, sdFluke(x, y, z), 0.035);
+  // the paddle joins the body only at its root; further back it is a separate fin with clear water above it
+  const rl = Math.hypot(x - 0.17, y + 0.132, Math.abs(z) - 0.094), kf = 0.002 + 0.018 * sstep(0.07, 0.0, rl);
+  d = smin(d, sdSpoon(RFLIP_L, x, y, z), kf);
+  d = smin(d, sdSpoon(RFLIP_R, x, y, z), kf);
+  return d;
+}
+
+EYE.r = 0.0105;
+CFG.stuff = 0.85;
+// a felted whale with its mouth closed: the teeth stay inside
+const _buildTeeth = buildTeeth;
+buildTeeth = function () { _buildTeeth(); for (const t of TEETH) t[1] = 5; };
+
+CFG.pileMM = 2.2; // felted tight: a low, matted pile
+
+
+function buildWGSL() {
+  const f = v => v.toFixed(5);
+  const teeth = TEETH.map(t => `vec4f(${f(t[0])}, ${f(t[1])}, ${f(t[2])}, ${f(t[3])})`).join(',\n  ');
+  return /* wgsl */`
+struct U {
+  viewProj: mat4x4f,
+  eye: vec4f,
+  top: vec4f,
+  top2: vec4f,
+  belly: vec4f,
+  thread: vec4f,
+  hinge: vec4f,
+  axis: vec4f,
+  params: vec4f,
+  camR: vec4f,
+  camU: vec4f,
+  camF: vec4f,
+  world: vec4f,
+  ring2: vec4f,
+  sun: vec4f,
+  look: vec4f,
+  ship: vec4f,
+  ship2: vec4f,
+};
+@group(0) @binding(0) var<uniform> u: U;
+@group(0) @binding(1) var<storage, read> cells: array<u32>;
+@group(0) @binding(2) var<storage, read> P: array<vec4f>;
+@group(0) @binding(3) var<storage, read> lean: array<vec4f>;
+
+const EX: f32 = ${f(EYE.x)};
+const EY: f32 = ${f(EYE.y)};
+const EZ: f32 = ${f(EYE.z)};
+const ER: f32 = ${f(EYE.r)};
+const CX: f32 = ${f(CHEEK.x)};
+const CY: f32 = ${f(CHEEK.y)};
+const CZ: f32 = ${f(CHEEK.z)};
+const BX: f32 = ${f(BLOW.x)};
+const BZ: f32 = ${f(BLOW.z)};
+const YMOUTH: f32 = ${f(YM)};
+const GAPW: f32 = ${f(GAP)};
+const MX0: f32 = ${f(MOUTH_X0)};
+const MX1: f32 = ${f(MOUTH_X1)};
+const MZ: f32 = ${f(MOUTH_Z)};
+const NT: i32 = ${TEETH.length};
+var<private> TEETH: array<vec4f, ${TEETH.length}> = array<vec4f, ${TEETH.length}>(
+  ${teeth}
+);
+
+struct VIn {
+  @location(0) rp: vec3f,
+  @location(1) rn: vec3f,
+  @location(2) uvw: vec3f,
+  @location(3) ex: vec2f,
+  @location(4) cell: u32,
+};
+struct VOut {
+  @builtin(position) pos: vec4f,
+  @location(0) wp: vec3f,
+  @location(1) wn: vec3f,
+  @location(2) rp: vec3f,
+  @location(3) rn: vec3f,
+  @location(4) ex: vec2f,
+  @location(5) ms: f32,
+};
+struct Sk { p: vec3f, n: vec3f, l: vec3f, m: f32 };
+
+fn rotA(v: vec3f, a: vec3f, ang: f32) -> vec3f {
+  let c = cos(ang);
+  let s = sin(ang);
+  return v * c + cross(a, v) * s + a * dot(a, v) * (1.0 - c);
+}
+
+fn skin(v: VIn) -> Sk {
+  let b = v.cell * 8u;
+  let t = v.uvw;
+  var p = vec3f(0.0);
+  var du = vec3f(0.0);
+  var dv = vec3f(0.0);
+  var dw = vec3f(0.0);
+  var l = vec4f(0.0);
+  for (var i = 0u; i < 8u; i++) {
+    let id = cells[b + i];
+    let q = P[id].xyz;
+    let bx = f32(i & 1u);
+    let by = f32((i >> 1u) & 1u);
+    let bz = f32((i >> 2u) & 1u);
+    let wx = mix(1.0 - t.x, t.x, bx);
+    let wy = mix(1.0 - t.y, t.y, by);
+    let wz = mix(1.0 - t.z, t.z, bz);
+    p += q * (wx * wy * wz);
+    du += q * ((bx * 2.0 - 1.0) * wy * wz);
+    dv += q * (wx * (by * 2.0 - 1.0) * wz);
+    dw += q * (wx * wy * (bz * 2.0 - 1.0));
+    l += lean[id] * (wx * wy * wz);
+  }
+  let n = v.rn;
+  let cn = n.x * cross(dv, dw) + n.y * cross(dw, du) + n.z * cross(du, dv);
+  var o: Sk;
+  o.p = p;
+  o.n = normalize(cn + vec3f(0.0, 1e-9, 0.0));
+  o.l = l.xyz;
+  o.m = clamp(l.w, 0.0, 1.0);
+  if (v.ex.y > 0.001) {
+    let ang = -u.hinge.w * v.ex.y;
+    let ax = u.axis.xyz;
+    o.p = u.hinge.xyz + rotA(p - u.hinge.xyz, ax, ang);
+    o.n = rotA(o.n, ax, ang);
+    o.l = rotA(o.l, ax, ang);
+  }
+  return o;
+}
+
+@vertex fn vsBase(v: VIn) -> VOut {
+  let s = skin(v);
+  var o: VOut;
+  o.pos = u.viewProj * vec4f(s.p, 1.0);
+  o.wp = s.p;
+  o.wn = s.n;
+  o.rp = v.rp;
+  o.rn = v.rn;
+  o.ex = vec2f(v.ex.x, 0.0);
+  o.ms = s.m;
+  return o;
+}
+
+@vertex fn vsShell(v: VIn, @builtin(instance_index) ii: u32) -> VOut {
+  let s = skin(v);
+  let h = (f32(ii) + 1.0) / u.params.y;
+  let L = u.params.x;
+  let lt = s.l - s.n * dot(s.l, s.n);
+  let p = s.p + s.n * (L * h) + lt * (L * h * h * 1.1);
+  var o: VOut;
+  o.pos = u.viewProj * vec4f(p, 1.0);
+  o.wp = p;
+  o.wn = s.n;
+  o.rp = v.rp;
+  o.rn = v.rn;
+  o.ex = vec2f(v.ex.x, h);
+  o.ms = s.m;
+  return o;
+}
+
+fn hash3(p: vec3f) -> vec4f {
+  var q = fract(p * vec3f(0.1031, 0.1030, 0.0973));
+  q += dot(q, q.yzx + 33.33);
+  let a = fract((q.xxy + q.yzz) * q.zyx);
+  let b = fract((a.x + a.y) * a.z * 13.7 + q.x);
+  return vec4f(a, b);
+}
+fn h1(p: vec3f) -> f32 { return hash3(p).w; }
+fn vnoise(p: vec3f) -> f32 {
+  let i = floor(p);
+  let f = fract(p);
+  let w = f * f * (3.0 - 2.0 * f);
+  let a = mix(mix(h1(i), h1(i + vec3f(1.0, 0.0, 0.0)), w.x), mix(h1(i + vec3f(0.0, 1.0, 0.0)), h1(i + vec3f(1.0, 1.0, 0.0)), w.x), w.y);
+  let b = mix(mix(h1(i + vec3f(0.0, 0.0, 1.0)), h1(i + vec3f(1.0, 0.0, 1.0)), w.x), mix(h1(i + vec3f(0.0, 1.0, 1.0)), h1(i + vec3f(1.0, 1.0, 1.0)), w.x), w.y);
+  return mix(a, b, w.z);
+}
+// heather wool: every strand is dark, mid or pale; clouds of charcoal and pale patches drift across the body
+fn marble(p: vec3f) -> f32 {
+  return vnoise(p * 3.1 + vec3f(4.3, 1.7, 8.9)) * 0.55 + vnoise(p * 7.3 + vec3f(1.1, 9.4, 2.2)) * 0.3 + vnoise(p * 16.0) * 0.15;
+}
+fn felt(c: vec3f, p: vec3f) -> vec3f {
+  let n1 = vnoise(p * 30.0);
+  let n2 = vnoise(p * vec3f(140.0, 90.0, 140.0));
+  return c * (0.94 + 0.07 * n1 + 0.06 * n2);
+}
+
+struct Reg { col: vec3f, kind: f32, emb: f32, dk: f32, lt: f32 };
+
+fn region(p: vec3f, n: vec3f, app: f32) -> Reg {
+  var r: Reg;
+  r.col = vec3f(0.0);
+  r.kind = 0.0;
+  r.emb = 0.0;
+  r.dk = 0.0;
+  r.lt = 0.0;
+  let side = select(-1.0, 1.0, p.z > 0.0);
+  let ec = vec3f(EX, EY, EZ * side);
+  let de = length(p - ec);
+  let edir = normalize(p - ec + vec3f(0.0, 1e-6, 0.0));
+  let lid = u.look.w > 0.02 && edir.y > mix(1.05, -1.05, u.look.w);
+  if (de < ER + 0.004 && !lid) {
+    let rest = normalize(vec3f(0.25, 0.05, side));
+    var toCalf = normalize(u.look.xyz - ec);
+    if (toCalf.z * side < 0.12) { toCalf = rest; }
+    let ld = normalize(mix(rest, toCalf, 0.7));
+    let k = dot(edir, ld);
+    let tang = edir - ld * k;
+    let ang = atan2(dot(tang, normalize(cross(ld, vec3f(0.0, 1.0, 0.0)))), dot(tang, vec3f(0.0, 1.0, 0.0)));
+    let fib = vnoise(vec3f(ang * 11.0, k * 40.0, 1.0)) * 0.6 + vnoise(vec3f(ang * 27.0, 3.0, k * 10.0)) * 0.4;
+    var c = vec3f(0.055, 0.042, 0.036);
+    c = mix(c, vec3f(0.27, 0.16, 0.09) * (0.65 + 0.7 * fib), smoothstep(0.70, 0.75, k));
+    c = mix(c, vec3f(0.04, 0.028, 0.024), smoothstep(0.70, 0.73, k) * (1.0 - smoothstep(0.75, 0.79, k)) * 0.85);
+    c = mix(c, vec3f(0.36, 0.22, 0.12), smoothstep(0.86, 0.90, k) * (1.0 - smoothstep(0.92, 0.935, k)) * 0.5);
+    c = mix(c, vec3f(0.010, 0.009, 0.011), smoothstep(0.925, 0.945, k));
+    r.col = c;
+    r.kind = 1.0;
+    return r;
+  }
+  if (p.x > 0.34 && p.x < 0.74 && p.y < -0.16 && abs(p.z) < 0.05) {
+    for (var i = 0; i < NT; i++) {
+      let t = TEETH[i];
+      let q = (p - t.xyz) / (vec3f(0.9, 1.05, 0.9) * t.w);
+      if (length(q) < 1.3) {
+        r.col = vec3f(0.97, 0.95, 0.89);
+        r.kind = 3.0;
+        return r;
+      }
+    }
+  }
+  if (p.x > MX0 - 0.012 && p.x < MX1 + 0.012 && abs(p.z) < MZ + 0.008 && abs(p.y - YMOUTH) < GAPW + 0.006) {
+    let deep = smoothstep(0.0, 0.05, MZ - abs(p.z)) * smoothstep(MX1 + 0.01, MX1 - 0.06, p.x);
+    r.col = mix(vec3f(0.96, 0.94, 0.91), vec3f(0.88, 0.70, 0.71), deep * 0.6);
+    r.kind = 2.0;
+    return r;
+  }
+  let m = marble(p);
+  var dk = smoothstep(0.46, 0.68, m) * 0.95;
+  var lt = smoothstep(0.44, 0.2, m) * 0.85;
+  // darker along the back, paler low on the flanks and belly
+  dk += smoothstep(0.02, 0.24, p.y) * 0.22 * smoothstep(0.3, 0.8, n.y);
+  lt += smoothstep(-0.2, -0.75, n.y) * 0.45 * (1.0 - app);
+  // charcoal tips on the flippers, the flukes and the end of the jaw
+  if (app > 0.5) {
+    if (p.x > -0.6) {
+      dk += smoothstep(0.20, 0.30, abs(p.z)) * 0.8;
+    } else {
+      dk += smoothstep(0.26, 0.44, abs(p.z)) * 0.6 + smoothstep(-1.25, -1.4, p.x) * 0.3;
+    }
+  }
+  let jaw = select(0.0, 1.0, p.y < YMOUTH + 0.004 && p.x > 0.30 && abs(p.z) < 0.07) * smoothstep(0.30, 0.40, p.x);
+  if (jaw > 0.0) {
+    lt = mix(lt, 0.9, jaw);
+    dk = mix(dk, smoothstep(0.62, 0.73, p.x) * 0.6, jaw);
+  }
+  if (de < ER + 0.016) {
+    dk += 0.6;
+  }
+  dk = clamp(dk, 0.0, 1.0);
+  lt = clamp(lt * (1.0 - dk * 0.7), 0.0, 1.0);
+  var c = mix(u.top.rgb, u.top2.rgb, dk * 0.85);
+  c = mix(c, u.belly.rgb, lt * 0.8);
+  let bd = length(p - vec3f(CX, CY, CZ * side));
+  let bl = (1.0 - smoothstep(0.02, 0.07, bd)) * u.axis.w;
+  c = mix(c, vec3f(0.97, 0.53, 0.60), bl * 0.75);
+  if (n.y > 0.45 && abs(p.x - BX) < 0.018) {
+    let zc = BZ + 0.0055 * sin((p.x - BX) * 175.0);
+    if (abs(p.z - zc) < 0.0022) {
+      c = u.thread.rgb;
+      r.emb = 1.0;
+    }
+  }
+  r.col = c;
+  r.dk = dk;
+  r.lt = lt;
+  return r;
+}
+// one strand's colour: dark, pale or mid, weighted by the patch it grows from
+fn strand(reg: Reg, rv: f32, tone: f32) -> vec3f {
+  let pd = 0.05 + 0.55 * reg.dk;
+  let pl = 0.12 + 0.55 * reg.lt;
+  var c = mix(reg.col, u.top.rgb, 0.35) * mix(0.93, 1.06, tone);
+  if (rv < pd) {
+    c = mix(reg.col, u.top2.rgb, 0.6) * mix(0.9, 1.02, tone);
+  } else if (rv > 1.0 - pl) {
+    c = mix(reg.col, u.belly.rgb, 0.65) * mix(0.97, 1.03, tone);
+  }
+  return c;
+}
+
+// ===== the handmade sea =====
+fn caustic(xz: vec2f, t: f32) -> f32 {
+  let w1 = sin(xz.x * 4.3 + t * 0.55 + sin(xz.y * 2.1 + t * 0.3));
+  let w2 = sin(xz.y * 5.1 - t * 0.45 + sin(xz.x * 1.7 - t * 0.25));
+  let w3 = sin((xz.x + xz.y) * 3.3 + t * 0.4);
+  return pow(max((w1 + w2 + w3) / 3.0, 0.0), 2.5);
+}
+// a direction mapped onto the faces of a cube, so a woven texture can hang in the water around the viewer
+fn faceUV(d: vec3f) -> vec2f {
+  let a = abs(d);
+  if (a.x >= a.y && a.x >= a.z) { return d.yz / a.x; }
+  if (a.y >= a.z) { return d.xz / a.y; }
+  return d.xy / a.z;
+}
+// plain weave with slubs: warp and weft crossing, uneven where the yarn thickens; fades out before it can shimmer
+fn weavePat(q: vec2f) -> f32 {
+  let fw = length(fwidth(q));
+  let slub = vnoise(vec3f(q * 0.07, 3.0));
+  let w = sin(q.x * 6.2831853) * sin(q.y * 6.2831853);
+  return w * (0.6 + 0.8 * slub) * (1.0 - smoothstep(0.1, 0.28, fw));
+}
+// indigo dyed unevenly, as cloth dipped by hand
+fn dye(d: vec3f) -> f32 {
+  return vnoise(d * 3.0 + vec3f(2.0, 7.0, 1.0)) * 0.6 + vnoise(d * 9.0 + vec3f(5.0, 1.0, 3.0)) * 0.4;
+}
+fn waterDir(d: vec3f) -> vec3f {
+  let deep = vec3f(0.016, 0.030, 0.070);
+  let mid = vec3f(0.090, 0.205, 0.285);
+  let shallow = vec3f(0.30, 0.50, 0.54);
+  var c = mix(deep, mid, smoothstep(-0.85, 0.05, d.y));
+  c = mix(c, shallow, smoothstep(0.0, 0.6, d.y));
+  // just under the horizon the water glows from the light that comes in sideways
+  c = mix(c, vec3f(0.17, 0.32, 0.38), exp(-(d.y / 0.16) * (d.y / 0.16)) * 0.55);
+  // the dye is uneven where there is light to show it, and settles in the dark
+  return c * (1.0 + (dye(d) - 0.5) * mix(0.05, 0.16, smoothstep(-0.6, 0.2, d.y)));
+}
+// light comes down in thin veils: soft curtains of differing widths that fan out from the sun's spot overhead,
+// sway slowly, are brightest near the surface and thin out into the deep
+fn veils(d: vec3f, t: f32) -> f32 {
+  let A = normalize(vec3f(-0.18, 1.0, 0.12));
+  let b1 = normalize(cross(A, vec3f(0.0, 0.0, 1.0)));
+  let b2 = cross(A, b1);
+  let e = dot(d, A);
+  let pr = vec2f(dot(d, b1), dot(d, b2));
+  let cs = pr / max(length(pr), 1e-4);
+  let sway = vec2f(sin(t * 0.05 + e * 2.0), cos(t * 0.04 - e * 1.6)) * 0.12;
+  let n1 = vnoise(vec3f(cs * 3.2 + sway, t * 0.025 + e * 0.5));
+  let n2 = vnoise(vec3f(cs * 8.5 + vec2f(7.0, 1.0) + sway * 2.0, t * 0.04 + e * 1.1));
+  let n3 = vnoise(vec3f(cs * 21.0 + vec2f(3.0, 5.0) + sway * 3.0, t * 0.06 + e * 2.0));
+  let wide = smoothstep(0.42, 0.80, n1);
+  let mid = smoothstep(0.50, 0.86, n2);
+  let fine = smoothstep(0.58, 0.92, n3);
+  let band = wide * 0.85 + mid * 0.5 * (0.4 + 0.6 * wide) + fine * 0.25 * (0.3 + 0.7 * mid);
+  return band * smoothstep(-1.15, 0.1, e) * (0.35 + 0.65 * smoothstep(-0.55, 0.6, e));
+}
+fn veilCol(d: vec3f) -> vec3f {
+  return mix(vec3f(0.40, 0.66, 0.68), vec3f(1.0, 0.96, 0.86), smoothstep(-0.2, 0.7, d.y));
+}
+// a single veil falling across a point in the water: used to light her back where a curtain touches it
+fn veilAt(wp: vec3f, t: f32) -> f32 {
+  let q = vec2f(wp.x + wp.y * 0.18, wp.z - wp.y * 0.12) * 1.15;
+  let n = vnoise(vec3f(q + vec2f(t * 0.02, -t * 0.015), t * 0.03)) * 0.65 + vnoise(vec3f(q * 2.7 + vec2f(3.0, 1.0), t * 0.05)) * 0.35;
+  return smoothstep(0.50, 0.78, n);
+}
+fn fbm2(p: vec2f) -> f32 {
+  var a = 0.5;
+  var s = 0.0;
+  var q = p;
+  for (var i = 0; i < 4; i++) {
+    s += a * vnoise(vec3f(q, 1.7 * f32(i)));
+    q = q * 2.03 + vec2f(1.7, 9.2);
+    a *= 0.5;
+  }
+  return s;
+}
+fn azd(a: f32, c: f32) -> f32 { let d = a - c; return d - 6.2831853 * round(d / 6.2831853); }
+fn cover(sd: f32, px: f32) -> f32 { return clamp(sd / px + 0.5, 0.0, 1.0); }
+// things far off on the horizon, cut like felt and paper: two islands, a ship, a small sailing boat
+fn horizonThings(d: vec3f, t: f32) -> vec4f {
+  let az = atan2(d.z, d.x);
+  let el = d.y;
+  let px = max(u.ring2.w, 1e-5);
+  var col = vec3f(0.0);
+  var a = 0.0;
+  let haze = vec3f(0.76, 0.84, 0.88);
+  {
+    let q = azd(az, 0.55) / 0.17;
+    if (abs(q) < 1.0) {
+      var hh = 0.032 * pow(max(1.0 - q * q, 0.0), 0.9) * (0.78 + 0.22 * sin(q * 2.6 + 0.7)) + 0.012 * exp(-pow((q - 0.45) / 0.22, 2.0));
+      hh *= 0.94 + 0.06 * vnoise(vec3f(az * 160.0, 0.0, 2.0));
+      let k = cover(min(hh - el, el + 0.004), px);
+      let ic = mix(vec3f(0.24, 0.36, 0.31), vec3f(0.40, 0.52, 0.44), smoothstep(0.0, 0.03, el) * (0.7 + 0.3 * vnoise(vec3f(az * 60.0, el * 200.0, 1.0))));
+      col = mix(ic, haze, 0.42);
+      a = k;
+    }
+  }
+  {
+    let q = azd(az, 2.75) / 0.065;
+    if (abs(q) < 1.0) {
+      let hh = 0.012 * pow(1.0 - q * q, 1.2);
+      let k = cover(min(hh - el, el + 0.004), px);
+      col = mix(col, mix(vec3f(0.34, 0.45, 0.42), haze, 0.62), k);
+      a = max(a, k);
+    }
+  }
+  {
+    let sc = 1.6;
+    let q = azd(az, -1.75) / sc;
+    let e = el / sc + q * 0.04 * sin(t * 0.8);
+    if (abs(q) < 0.03) {
+      let pxs = px / sc;
+      let hull = cover(min(0.022 - max(e, 0.0) * 0.6 - abs(q), min(0.0045 - e, e + 0.003)), pxs);
+      let cabin = cover(min(min(q + 0.012, 0.006 - q), min(e - 0.0045, 0.009 - e)), pxs);
+      let funnel = cover(min(min(q - 0.0085, 0.0125 - q), min(e - 0.0045, 0.0115 - e)), pxs);
+      col = mix(col, vec3f(0.20, 0.23, 0.27), hull);
+      col = mix(col, vec3f(0.92, 0.91, 0.86), cabin);
+      col = mix(col, vec3f(0.66, 0.27, 0.22), funnel);
+      a = max(a, max(hull, max(cabin, funnel)));
+    }
+  }
+  {
+    let sc = 1.4;
+    let q = azd(az, -3.0) / sc;
+    let e = el / sc + q * 0.08 * sin(t * 1.1 + 1.0);
+    if (abs(q) < 0.015) {
+      let pxs = px / sc;
+      let hull = cover(min(0.008 - abs(q + 0.001) - max(-e, 0.0) * 0.8, min(0.003 - e, e + 0.0022)), pxs);
+      let sail = cover(min(min(0.003 - q, q - (0.003 - 0.011 * (0.023 - e) / 0.02)), min(e - 0.0032, 0.023 - e)), pxs);
+      col = mix(col, vec3f(0.28, 0.24, 0.22), hull);
+      col = mix(col, vec3f(0.97, 0.95, 0.90), sail);
+      a = max(a, max(hull, sail));
+    }
+  }
+  return vec4f(col, a);
+}
+// the air above: a hand-dyed blue sky with felted clouds, and the far horizon
+fn skyCol(d: vec3f, t: f32, far: bool) -> vec3f {
+  let up = clamp(d.y, -0.2, 1.0);
+  var c = mix(vec3f(0.80, 0.87, 0.90), vec3f(0.36, 0.58, 0.82), smoothstep(0.0, 0.55, up));
+  let fib = vnoise(vec3f(d.x * 31.0 + d.z * 13.0, d.y * 4.0 + d.x * 3.0, d.z * 29.0 - d.x * 9.0));
+  c *= 0.97 + 0.025 * fib + 0.04 * vnoise(d * 2.2 + vec3f(1.0, 4.0, 2.0));
+  if (d.y > 0.0) {
+    let uv = d.xz / (d.y + 0.06) * 0.55 + vec2f(t * 0.004, t * 0.0015);
+    let n = fbm2(uv * 1.3);
+    let fuzz = vnoise(vec3f(uv * 24.0, 3.0)) * 0.07;
+    let cov = smoothstep(0.50, 0.60, n + fuzz) * smoothstep(0.0, 0.10, d.y);
+    let shade = smoothstep(0.50, 0.80, n + fuzz * 0.5);
+    let cc = mix(vec3f(0.78, 0.81, 0.85), vec3f(0.99, 0.98, 0.96), shade);
+    c = mix(c, cc, cov * 0.96);
+  }
+  let sd = max(dot(d, normalize(u.sun.xyz)), 0.0);
+  c += vec3f(0.12, 0.10, 0.06) * smoothstep(0.993, 0.996, sd) + vec3f(0.10, 0.09, 0.05) * pow(sd, 30.0);
+  if (far) {
+    let h = horizonThings(d, t);
+    c = mix(c, h.rgb, h.a);
+  }
+  if (d.y < 0.0) { c = mix(c, vec3f(0.14, 0.30, 0.44), smoothstep(0.0, -0.05, d.y)); }
+  return c;
+}
+// light fades with depth (reds first), then the water itself closes over whatever is far away
+fn water(c: vec3f, wp: vec3f) -> vec3f {
+  let S = u.world.x;
+  let depth = max(S - wp.y, 0.0);
+  let lvl = exp(-depth * 0.16);
+  var col = c * mix(vec3f(0.05, 0.09, 0.16), vec3f(1.0), lvl);
+  col *= mix(vec3f(0.70, 0.88, 0.95), vec3f(1.0), smoothstep(0.0, 1.0, lvl));
+  let v = wp - u.eye.xyz;
+  let dl = max(length(v), 1e-4);
+  var dist = dl;
+  if (u.eye.y > S) { dist = dl * clamp((S - wp.y) / max(u.eye.y - wp.y, 1e-3), 0.0, 1.0); }
+  let fog = 1.0 - exp(-dist * 0.066);
+  let vd = v / dl;
+  var veil = vec3f(0.0);
+  if (u.eye.y < S) { veil = veilCol(vd) * veils(vd, u.camF.w) * 0.55 * min(dist * 0.12, 1.0); }
+  return mix(col, waterDir(vd), fog) + veil;
+}
+fn light(base: vec3f, n: vec3f, wp: vec3f, sheen: f32, spec: f32) -> vec3f {
+  let v = normalize(u.eye.xyz - wp);
+  let L1 = normalize(u.sun.xyz);
+  let d1 = clamp(dot(n, L1) * 0.6 + 0.4, 0.0, 1.0);
+  let up = n.y * 0.5 + 0.5;
+  var c = base * (vec3f(0.96, 0.98, 0.94) * d1 * 0.74 + vec3f(0.52, 0.70, 0.76) * up * 0.30 + vec3f(0.18, 0.26, 0.30) * 0.20);
+  let depth = max(u.world.x - wp.y, 0.0);
+  let topLit = max(n.y, 0.0);
+  let near = exp(-depth * 0.5);
+  c += base * vec3f(0.62, 0.68, 0.58) * caustic(wp.xz * 1.6, u.camF.w) * topLit * near * 1.45;
+  c += base * vec3f(0.98, 0.92, 0.74) * veilAt(wp, u.camF.w) * (0.25 + 0.75 * topLit) * near * 1.3;
+  let nv = clamp(dot(n, v), 0.0, 1.0);
+  c += (base * 0.6 + vec3f(0.16, 0.22, 0.24)) * pow(1.0 - nv, 2.6) * sheen;
+  if (spec > 0.0) {
+    let sp = pow(max(dot(n, normalize(L1 + v)), 0.0), 160.0);
+    c += vec3f(0.9, 0.96, 0.95) * sp * 1.6 * spec + vec3f(0.5, 0.62, 0.66) * pow(1.0 - nv, 4.0) * 0.3 * spec;
+  }
+  return water(c, wp);
+}
+
+struct BOut { @builtin(position) pos: vec4f, @location(0) ndc: vec2f };
+@vertex fn vsBg(@builtin(vertex_index) vi: u32) -> BOut {
+  var c = array<vec2f, 3>(vec2f(-1.0, -1.0), vec2f(3.0, -1.0), vec2f(-1.0, 3.0));
+  var o: BOut;
+  o.pos = vec4f(c[vi], 0.9999, 1.0);
+  o.ndc = c[vi];
+  return o;
+}
+@fragment fn fsBg(i: BOut) -> @location(0) vec4f {
+  let d = normalize(u.camF.xyz + u.camR.xyz * (i.ndc.x * u.camR.w * u.camU.w) + u.camU.xyz * (i.ndc.y * u.camR.w));
+  let t = u.camF.w;
+  if (u.eye.y > u.world.x) { return vec4f(skyCol(d, t, true), 1.0); }
+  var c = waterDir(d);
+  c += veilCol(d) * veils(d, t) * 0.6 * (1.0 - 0.75 * u.ship2.x);
+  c *= 1.0 - 0.22 * u.ship2.x;
+  return vec4f(c, 1.0);
+}
+
+// ===== the surface: a sheet of silk seen from below, or water cloth seen from above =====
+struct SOut { @builtin(position) pos: vec4f, @location(0) wp: vec3f };
+@vertex fn vsSurf(@builtin(vertex_index) vi: u32) -> SOut {
+  var c = array<vec2f, 6>(vec2f(-1.0, -1.0), vec2f(1.0, -1.0), vec2f(1.0, 1.0), vec2f(-1.0, -1.0), vec2f(1.0, 1.0), vec2f(-1.0, 1.0));
+  let q = c[vi] * 90.0 + u.eye.xz;
+  var o: SOut;
+  o.wp = vec3f(q.x, u.world.x, q.y);
+  o.pos = u.viewProj * vec4f(o.wp, 1.0);
+  return o;
+}
+fn swell(xz: vec2f, t: f32) -> vec3f {
+  let warp = vnoise(vec3f(xz * 0.35, t * 0.03)) * 2.2 + vnoise(vec3f(xz * 0.9 + vec2f(7.0, 3.0), t * 0.05)) * 0.8;
+  var h = 0.0;
+  var g = vec2f(0.0);
+  let dirs = array<vec2f, 7>(vec2f(0.96, 0.28), vec2f(0.62, 0.78), vec2f(0.92, -0.39), vec2f(-0.03, 1.0), vec2f(0.71, -0.70), vec2f(0.34, 0.94), vec2f(0.99, -0.12));
+  let ks = array<f32, 7>(1.6, 2.4, 3.5, 5.2, 7.8, 11.5, 16.0);
+  let amps = array<f32, 7>(0.34, 0.24, 0.16, 0.10, 0.06, 0.035, 0.022);
+  for (var i = 0; i < 7; i++) {
+    let k = ks[i];
+    let w = 0.55 * sqrt(k * 9.8) * 0.35;
+    let ph = dot(dirs[i], xz) * k - w * t + warp * (0.6 + 0.25 * f32(i)) + f32(i) * 1.7;
+    h += amps[i] * sin(ph);
+    g += dirs[i] * (amps[i] * k * cos(ph));
+  }
+  return vec3f(0.5 + 0.5 * h, 0.5 * g);
+}
+fn rip(xz: vec2f, t: f32) -> f32 {
+  return vnoise(vec3f(xz * 1.25 + vec2f(t * 0.11, t * 0.04), t * 0.09)) * 0.6 + vnoise(vec3f(xz * 3.2 - vec2f(t * 0.07, -t * 0.09), 5.0 + t * 0.13)) * 0.4;
+}
+@group(0) @binding(5) var<storage, read> rips: array<vec4f, 48>;
+// rings sent out where her body crosses the surface: height-slope (xy) and crest brightness (z)
+fn bodyRipples(xz: vec2f) -> vec3f {
+  var g = vec2f(0.0);
+  var br = 0.0;
+  for (var k = 0; k < 48; k++) {
+    let q = rips[k];
+    let age = q.z;
+    if (age > 6.5 || q.w <= 0.0) { continue; }
+    let dv = xz - q.xy;
+    let r = length(dv);
+    let R = age * 0.42;
+    let w = 0.07 + age * 0.06;
+    let x = r - R;
+    if (abs(x) > w * 3.0) { continue; }
+    let env = exp(-(x * x) / (w * w)) * q.w * (1.0 - age / 6.5) / sqrt(1.0 + r * 4.0);
+    let kk = 30.0 / (1.0 + age * 0.35);
+    g += (dv / max(r, 1e-3)) * (-sin(x * kk) * kk * env * 0.035);
+    br += max(cos(x * kk), 0.0) * env;
+  }
+  return vec3f(g, br);
+}
+fn ringAt(xz: vec2f, c: vec2f, age: f32) -> f32 {
+  if (age < 0.0 || age > 7.0) { return 0.0; }
+  let r = length(xz - c);
+  let R = age * 0.5;
+  let wdt = 0.1 + age * 0.06;
+  let band = exp(-((r - R) * (r - R)) / (wdt * wdt));
+  return band * (1.0 - age / 7.0) * (0.5 + 0.5 * sin((r - R) * 26.0));
+}
+// the ship's hull plan on the water (x) and the churned white of its wake (y)
+fn shipMarks(xz: vec2f) -> vec2f {
+  let dp = xz - u.ship.xy;
+  let cs = cos(u.ship.z);
+  let sn = sin(u.ship.z);
+  let lx = dp.x * cs + dp.y * sn;
+  let lz = -dp.x * sn + dp.y * cs;
+  let beam = 1.35 * sqrt(clamp(1.0 - max(lx - 3.5, 0.0) / 4.5, 0.0, 1.0)) * (1.0 - 0.25 * smoothstep(-6.0, -8.0, lx));
+  let dh = max(abs(lz) - beam, abs(lx) - 8.0);
+  let hull = 1.0 - smoothstep(-0.04, 0.22, dh);
+  let sx = -lx - 8.0;
+  let wake = smoothstep(0.0, 1.5, sx) * (1.0 - smoothstep(4.0, 30.0, sx)) * (1.0 - smoothstep(0.6 + sx * 0.12, 1.4 + sx * 0.16, abs(lz)));
+  // the bow pushes up a white fold of water along both sides
+  let bowW = smoothstep(0.5, 0.0, abs(abs(lz) - beam - 0.12 - max(6.5 - lx, 0.0) * 0.08)) * smoothstep(2.0, 6.5, lx) * (1.0 - smoothstep(8.0, 8.6, lx));
+  let foam = vnoise(vec3f(lx * 2.2 + u.ship2.y * 3.0, lz * 2.6, u.ship2.y * 1.5)) * 0.6 + vnoise(vec3f(lx * 6.0 + u.ship2.y * 5.0, lz * 7.0, 3.0)) * 0.4;
+  return vec2f(hull, max(wake * smoothstep(0.42, 0.75, foam), bowW * smoothstep(0.35, 0.7, foam)) * (1.0 - hull));
+}
+@fragment fn fsSurf(i: SOut) -> @location(0) vec4f {
+  let t = u.camF.w;
+  let xz = i.wp.xz;
+  let e = 0.03;
+  let sw = swell(xz, t);
+  let fine = rip(xz * 1.6, t * 1.3);
+  let h = sw.x * 0.85 + fine * 0.15;
+  let br = bodyRipples(xz);
+  let g = sw.yz + vec2f(rip(xz * 1.6 + vec2f(e, 0.0), t * 1.3) - fine, rip(xz * 1.6 + vec2f(0.0, e), t * 1.3) - fine) / e * 0.35 + br.xy;
+  let rg = ringAt(xz, u.world.yz, u.world.w) + ringAt(xz, u.ring2.xy, u.ring2.z) + br.z * 0.9;
+  let v = i.wp - u.eye.xyz;
+  let dist = max(length(v), 1e-4);
+  let vd = v / dist;
+  if (u.eye.y < u.world.x) {
+    // Snell's window: the sky only shows through a disc overhead; outside it the surface mirrors the lit water
+    let cosT = vd.y + dot(g, vd.xz) * 0.10;
+    let win = smoothstep(0.62, 0.72, cosT);
+    var outside = mix(vec3f(0.17, 0.32, 0.37), vec3f(0.30, 0.47, 0.50), h);
+    outside += vec3f(0.10, 0.14, 0.13) * pow(clamp(h * 1.3 - 0.2, 0.0, 1.0), 3.0);
+    outside += vec3f(0.05, 0.07, 0.07) * smoothstep(0.55, 0.9, h);
+    var inside = mix(vec3f(0.58, 0.75, 0.74), vec3f(0.92, 0.95, 0.88), smoothstep(0.15, 0.9, h + dot(g, vec2f(0.12, 0.08))));
+    let sunDir = normalize(vec3f(u.sun.x * 0.6, 1.0, u.sun.z * 0.6));
+    let sd = dot(vd, sunDir) + (g.x + g.y) * 0.008;
+    inside += vec3f(0.30, 0.24, 0.14) * smoothstep(0.990, 0.994, sd);
+    var c = mix(outside, inside, win);
+    c += vec3f(0.35, 0.45, 0.42) * rg * 0.35;
+    // a passing ship, seen from below: a long dark hull and the white churn of its wake
+    if (u.ship.w > 0.5) {
+      let sm = shipMarks(xz);
+      c += vec3f(0.42, 0.52, 0.52) * sm.y * 0.9;
+      c = mix(c, vec3f(0.012, 0.02, 0.028), sm.x);
+    }
+    c = mix(c, waterDir(normalize(vec3f(vd.x, 0.0, vd.z))), smoothstep(2.5, 22.0, dist));
+    return vec4f(c, 1.0);
+  }
+  let n = normalize(vec3f(-g.x * 0.16, 1.0, -g.y * 0.16));
+  let fres = 0.2 + 0.8 * pow(1.0 - abs(vd.y), 4.0);
+  let rd = reflect(vd, n);
+  let refl = skyCol(vec3f(rd.x, abs(rd.y), rd.z), t, false);
+  var c = mix(vec3f(0.08, 0.24, 0.40) * (0.85 + 0.3 * h), refl, fres);
+  c += vec3f(0.5, 0.55, 0.5) * rg * 0.12;
+  if (u.ship.w > 0.5) { // its wake, seen from above: white water spreading behind the stern
+    let sm = shipMarks(xz);
+    c = mix(c, vec3f(0.90, 0.93, 0.92), sm.y * 0.85);
+  }
+  c = mix(c, skyCol(normalize(vec3f(vd.x, 0.0, vd.z)), t, false), smoothstep(20.0, 85.0, dist));
+  let a = clamp(mix(0.78, 1.0, fres) + rg * 0.1, 0.0, 1.0);
+  return vec4f(c, a);
+}
+
+// ===== loose wool fibres drifting in the water, the way marine snow drifts: soft curls of many lengths =====
+struct FbOut { @builtin(position) pos: vec4f, @location(0) wp: vec3f, @location(1) q: vec2f, @location(2) tone: f32, @location(3) near: f32 };
+fn fiberC(s: f32, ax: vec3f, b1: vec3f, b2: vec3f, L: f32, k1: f32, fq: f32, ph: f32, amp: f32) -> vec3f {
+  let x = s - 0.5;
+  return ax * (x * L) + b1 * (k1 * (x * x - 0.083) * L) + b2 * (sin(s * fq + ph) * amp * L) + b1 * (sin(s * fq * 0.6 + ph * 1.7) * amp * 0.5 * L);
+}
+@vertex fn vsFiber(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> FbOut {
+  let fi = f32(ii);
+  let r = hash3(vec3f(fi * 1.37 + 0.5, 2.1, 5.3));
+  let r2 = hash3(vec3f(fi * 0.71 + 3.3, 8.3, 1.9));
+  let r3 = hash3(vec3f(fi * 2.13 + 7.1, 4.4, 0.6));
+  let B = 7.0;
+  let t = u.camF.w;
+  let drift = vec3f(sin(t * 0.05 + r2.x * 6.28) * 0.3, -t * (0.006 + 0.012 * r2.y), cos(t * 0.04 + r2.z * 6.28) * 0.3);
+  let p0 = r.xyz * B + drift;
+  let p = u.eye.xyz + (fract((p0 - u.eye.xyz) / B) - vec3f(0.5)) * B;
+  let ax = normalize(r2.xyz - vec3f(0.5) + vec3f(0.0, 0.0, 0.001));
+  let b1 = normalize(cross(ax, select(vec3f(0.0, 1.0, 0.0), vec3f(1.0, 0.0, 0.0), abs(ax.y) > 0.9)));
+  let b2 = cross(ax, b1);
+  // mostly short tufts, now and then a long loose strand
+  let L = 0.03 + 0.07 * r.w + 0.24 * pow(r3.x, 5.0);
+  let k1 = (r3.z - 0.5) * 2.4;
+  let fq = 2.5 + 4.5 * r2.y;
+  let ph = r3.y * 6.28 + t * (0.25 + 0.35 * r3.w);
+  let amp = 0.05 + 0.10 * r2.z;
+  var corner = array<vec2f, 6>(vec2f(0.0, -1.0), vec2f(1.0, -1.0), vec2f(1.0, 1.0), vec2f(0.0, -1.0), vec2f(1.0, 1.0), vec2f(0.0, 1.0));
+  let cq = corner[vi % 6u];
+  let s = (f32(vi / 6u) + cq.x) / 10.0;
+  let c0 = fiberC(s, ax, b1, b2, L, k1, fq, ph, amp);
+  let tg = normalize(fiberC(min(s + 0.02, 1.0), ax, b1, b2, L, k1, fq, ph, amp) - fiberC(max(s - 0.02, 0.0), ax, b1, b2, L, k1, fq, ph, amp) + vec3f(1e-6, 0.0, 0.0));
+  let toCam = normalize(u.eye.xyz - (p + c0));
+  let sd = normalize(cross(tg, toCam) + vec3f(1e-5, 0.0, 0.0));
+  let wdt = (0.0022 + 0.0022 * r2.w) * (0.35 + 0.65 * sin(3.14159 * s));
+  let wp = p + c0 + sd * (cq.y * wdt);
+  var o: FbOut;
+  o.pos = u.viewProj * vec4f(wp, 1.0);
+  o.wp = wp;
+  o.q = vec2f(s, cq.y);
+  o.tone = r2.w;
+  o.near = smoothstep(0.12, 0.45, length(p - u.eye.xyz));
+  return o;
+}
+@fragment fn fsFiber(i: FbOut) -> @location(0) vec4f {
+  if (i.wp.y > u.world.x - 0.01) { discard; }
+  let wisp = 0.55 + 0.45 * vnoise(vec3f(i.q.x * 14.0 + i.tone * 40.0, i.tone * 7.0, 0.0));
+  let a = (1.0 - smoothstep(0.25, 1.0, abs(i.q.y))) * i.near * wisp;
+  if (a < 0.03) { discard; }
+  let base = mix(vec3f(0.70, 0.75, 0.72), vec3f(0.92, 0.88, 0.80), i.tone);
+  return vec4f(water(base * 0.66, i.wp), a * 0.85);
+}
+
+// ===== other lives in the water: dark cut-out silhouettes of fish, jellyfish and a turtle =====
+@group(0) @binding(4) var<storage, read> cre: array<vec4f>;
+struct CrOut { @builtin(position) pos: vec4f, @location(0) wp: vec3f, @location(1) q: vec2f, @location(2) info: vec4f };
+@vertex fn vsCre(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> CrOut {
+  let a = cre[ii * 3u];
+  let b = cre[ii * 3u + 1u];
+  let c = cre[ii * 3u + 2u];
+  let p = a.xyz;
+  if (b.w > 2.5) { var z: CrOut; z.pos = vec4f(0.0, 0.0, -2.0, 1.0); z.wp = p; z.q = vec2f(0.0); z.info = vec4f(0.0); return z; }
+  let V = normalize(p - u.eye.xyz);
+  var f = b.xyz - V * dot(b.xyz, V);
+  if (length(f) < 1e-3) { f = u.camR.xyz; }
+  f = normalize(f);
+  var up = cross(f, V);
+  if (up.y < 0.0) { up = -up; }
+  var cs = array<vec2f, 6>(vec2f(-1.0, -1.0), vec2f(1.0, -1.0), vec2f(1.0, 1.0), vec2f(-1.0, -1.0), vec2f(1.0, 1.0), vec2f(-1.0, 1.0));
+  let q = cs[vi];
+  let wp = p + (f * q.x + up * q.y) * a.w;
+  var o: CrOut;
+  o.pos = u.viewProj * vec4f(wp, 1.0);
+  o.wp = wp;
+  o.q = q;
+  o.info = vec4f(b.w, c.x, c.y, c.z);
+  return o;
+}
+fn sdEl2(p: vec2f, r: vec2f) -> f32 { return (length(p / r) - 1.0) * min(r.x, r.y); }
+fn sdTaper(p: vec2f, a: vec2f, b: vec2f, r0: f32, r1: f32) -> f32 {
+  let pa = p - a;
+  let ba = b - a;
+  let h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+  return length(pa - ba * h) - mix(r0, r1, h);
+}
+// x runs head to tail-tip, y is up; the body flexes toward the tail as it swims
+fn fishSd(q0: vec2f, ph: f32) -> f32 {
+  var p = q0;
+  p.y -= sin(ph - p.x * 3.0) * 0.07 * smoothstep(0.15, -0.9, p.x);
+  var d = sdEl2(p - vec2f(0.10, 0.0), vec2f(0.55, 0.16));
+  let tu = -(p.x + 0.38);
+  let tri = max(max(-tu, tu - 0.45), abs(p.y) - (0.03 + 0.55 * tu));
+  d = min(d, max(tri, (tu - 0.24) * 1.1 - abs(p.y)));
+  d = min(d, sdTaper(p, vec2f(0.12, 0.12), vec2f(-0.10, 0.22), 0.045, 0.01));
+  return d;
+}
+// the bell on top (x is up here), a scalloped rim, trailing tentacles and two frilled arms
+fn jellySd(q0: vec2f, ph: f32) -> f32 {
+  let x = q0.y;
+  let y = q0.x;
+  let pulse = 0.5 + 0.5 * sin(ph);
+  let w = 0.40 * (1.0 - 0.15 * pulse);
+  let h = 0.32 * (1.0 + 0.12 * pulse);
+  let top = 0.18;
+  var d = max(sdEl2(vec2f(x, y - top), vec2f(w, h)), (top - 0.03 + 0.025 * sin(x * 38.0)) - y);
+  for (var k = 0; k < 6; k++) {
+    let fk = f32(k);
+    let x0 = (-0.32 + 0.128 * fk) * w / 0.40;
+    let len = 0.62 + 0.28 * fract(fk * 0.618 + 0.1);
+    let yy = clamp(top - y, 0.0, len);
+    let xs = x0 + sin(yy * 8.0 - ph * 1.2 + fk * 1.7) * 0.07 * yy;
+    d = min(d, max(abs(x - xs) - 0.011 * (1.0 - 0.6 * yy / len), max(y - top + 0.02, (top - len) - y)));
+  }
+  for (var k = 0; k < 2; k++) {
+    let sx = select(-1.0, 1.0, k == 1);
+    let yy = clamp(top - y, 0.0, 0.5);
+    let xs = sx * 0.06 + sin(yy * 6.0 - ph + sx) * 0.05;
+    let wd = 0.035 * (1.0 - yy * 1.2) + 0.012 * sin(yy * 60.0);
+    d = min(d, max(abs(x - xs) - max(wd, 0.006), max(y - top + 0.02, (top - 0.5) - y)));
+  }
+  return d;
+}
+// a sea turtle in profile: domed shell, head, a long front flipper that rows, a small rear flipper
+fn turtleSd(q: vec2f, ph: f32) -> f32 {
+  var d = max(sdEl2(q - vec2f(-0.05, -0.04), vec2f(0.46, 0.25)), -0.10 - q.y);
+  d = min(d, sdEl2(q - vec2f(-0.05, -0.10), vec2f(0.42, 0.05)));
+  d = min(d, sdEl2(q - vec2f(0.52, -0.04), vec2f(0.12, 0.08)));
+  d = min(d, sdTaper(q, vec2f(0.34, -0.06), vec2f(0.46, -0.04), 0.06, 0.055));
+  let th = -2.45 + 0.5 * sin(ph);
+  d = min(d, sdTaper(q, vec2f(0.18, -0.10), vec2f(0.18, -0.10) + vec2f(cos(th), sin(th)) * 0.55, 0.06, 0.018));
+  let th2 = -2.7 + 0.25 * sin(ph + 1.2);
+  d = min(d, sdTaper(q, vec2f(-0.38, -0.10), vec2f(-0.38, -0.10) + vec2f(cos(th2), sin(th2)) * 0.24, 0.045, 0.02));
+  return d;
+}
+@fragment fn fsCre(i: CrOut) -> @location(0) vec4f {
+  let ty = i.info.x;
+  let ph = i.info.y;
+  let dF = fishSd(i.q, ph);
+  let dJ = jellySd(i.q, ph);
+  let dT = turtleSd(i.q, ph);
+  let d = select(select(dT, dJ, ty < 1.5), dF, ty < 0.5);
+  let w = max(fwidth(d), 1e-4);
+  let cov = clamp(0.5 - d / w, 0.0, 1.0);
+  let jelly = ty > 0.5 && ty < 1.5;
+  let alpha = cov * i.info.z * select(0.95, 0.62, jelly);
+  if (alpha < 0.01) { discard; }
+  // nearly black, with the faintest light along the upper edge so they still read against the deep
+  var col = select(vec3f(0.010, 0.016, 0.026), vec3f(0.035, 0.06, 0.08), jelly);
+  col += vec3f(0.10, 0.16, 0.17) * smoothstep(-0.03, 0.0, d) * smoothstep(-0.2, 0.25, i.q.y) * 0.5;
+  return vec4f(water(col, i.wp), alpha);
+}
+
+// ===== the merchant ship above the water, seen when the calf comes up to breathe =====
+struct ShOut { @builtin(position) pos: vec4f, @location(0) wp: vec3f, @location(1) n: vec3f, @location(2) col: vec3f, @location(3) lp: vec3f };
+@vertex fn vsShip(@location(0) p: vec3f, @location(1) nn: vec3f, @location(2) col: vec3f) -> ShOut {
+  let t = u.ship2.y;
+  let roll = 0.012 * sin(t * 0.55);
+  let pitch = 0.005 * sin(t * 0.37 + 1.0);
+  let q = vec3f(p.x, p.y + p.z * roll + p.x * pitch + 0.03 * sin(t * 0.4), p.z - p.y * roll);
+  let cs = cos(u.ship.z);
+  let sn = sin(u.ship.z);
+  var o: ShOut;
+  o.wp = vec3f(u.ship.x + q.x * cs - q.z * sn, u.world.x + q.y, u.ship.y + q.x * sn + q.z * cs);
+  o.n = vec3f(nn.x * cs - nn.z * sn, nn.y, nn.x * sn + nn.z * cs);
+  o.pos = u.viewProj * vec4f(o.wp, 1.0);
+  o.col = col;
+  o.lp = p;
+  return o;
+}
+@fragment fn fsShip(i: ShOut) -> @location(0) vec4f {
+  if (i.wp.y < u.world.x - 0.03) { discard; }
+  var n = normalize(i.n);
+  if (dot(n, u.eye.xyz - i.wp) < 0.0) { n = -n; }
+  let dif = max(dot(n, normalize(u.sun.xyz)), 0.0);
+  var c = i.col * (0.55 + 0.20 * n.y + 0.70 * dif);
+  // felted, like everything else in this sea: a soft mottle over each block
+  let f = vnoise(i.lp * 9.0) * 0.6 + vnoise(i.lp * 31.0) * 0.4;
+  c *= 0.90 + 0.16 * f;
+  let dist = length(i.wp - u.eye.xyz);
+  c = mix(c, vec3f(0.78, 0.85, 0.89), (1.0 - exp(-dist * 0.016)) * 0.9);
+  return vec4f(c, 1.0);
+}
+
+// ===== rays: a line of eagle rays and one manta, flying with their wings =====
+// Each ray is a grid laid over its planform; the wings bend at the root and a wave runs out along them and back across them.
+const RAY_NX: u32 = 28u;
+const RAY_NZ: u32 = 22u;
+struct RyOut { @builtin(position) pos: vec4f, @location(0) wp: vec3f, @location(1) q: vec2f, @location(2) info: vec4f, @location(3) upv: vec3f };
+fn rayPlan(q: vec2f, manta: bool) -> f32 {
+  let t = max(abs(q.x), 1e-4);
+  let z = q.y;
+  let pi = 3.14159265;
+  if (manta) {
+    // broad falcate wings, a straight wide head with the two rolled cephalic fins, a short tail
+    let zL = 0.27 - 0.49 * pow(t, 1.7);
+    let zT = mix(-0.40, -0.22, t) + 0.11 * sin(pi * min(t, 1.0));
+    var d = max(max(z - zL, zT - z), t - 1.0);
+    d = min(d, sdEl2(vec2f(t - 0.15, z - 0.31), vec2f(0.032, 0.075)));
+    d = min(d, sdTaper(vec2f(q.x, z), vec2f(0.0, -0.34), vec2f(0.0, -0.74), 0.022, 0.004));
+    return d;
+  }
+  // swept, pointed wings, a raised head with a rounded snout, small pelvic fins and a very long whip of a tail
+  let zL = 0.16 - 0.48 * pow(t, 1.35);
+  let zT = mix(-0.30, -0.32, t) + 0.13 * sin(pi * min(t, 1.0));
+  var d = max(max(z - zL, zT - z), t - 1.0);
+  d = min(d, sdEl2(vec2f(q.x, z - 0.22), vec2f(0.075, 0.11)));
+  d = min(d, sdEl2(vec2f(t - 0.07, z + 0.33), vec2f(0.04, 0.06)));
+  d = min(d, sdTaper(vec2f(q.x, z), vec2f(0.0, -0.28), vec2f(0.0, -1.62), 0.014, 0.002));
+  return d;
+}
+@vertex fn vsRay(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> RyOut {
+  let a = cre[ii * 3u];
+  let b = cre[ii * 3u + 1u];
+  let c = cre[ii * 3u + 2u];
+  var o: RyOut;
+  if (b.w < 2.5) {
+    o.pos = vec4f(0.0, 0.0, -2.0, 1.0);
+    o.wp = vec3f(0.0);
+    o.q = vec2f(0.0);
+    o.info = vec4f(0.0);
+    o.upv = vec3f(0.0, 1.0, 0.0);
+    return o;
+  }
+  let manta = b.w > 3.5;
+  let cell = vi / 6u;
+  let k = vi % 6u;
+  var cs = array<vec2f, 6>(vec2f(0.0, 0.0), vec2f(1.0, 0.0), vec2f(1.0, 1.0), vec2f(0.0, 0.0), vec2f(1.0, 1.0), vec2f(0.0, 1.0));
+  let gx = f32(cell % RAY_NX) + cs[k].x;
+  let gz = f32(cell / RAY_NX) + cs[k].y;
+  let z0 = select(-1.66, -0.78, manta);
+  let z1 = select(0.36, 0.43, manta);
+  let lx = -1.05 + 2.10 * gx / f32(RAY_NX);
+  let lz = mix(z0, z1, gz / f32(RAY_NZ));
+  let ph = c.x;
+  let amp = c.z;
+  let ta = abs(lx);
+  let lead = select(0.16, 0.27, manta);
+  // wing angle: grows outward along the wing, the tips lagging the root and the trailing edge lagging the leading edge
+  let A = select(0.72, 0.56, manta) * amp;
+  let th = A * smoothstep(0.06, 1.0, ta) * sin(ph - 1.2 * ta - 1.5 * (lead - lz));
+  let r0 = 0.09;
+  let rr = max(ta - r0, 0.0);
+  var x = sign(lx) * (min(ta, r0) + rr * cos(th));
+  // the body heaves a little against the wings
+  var y = rr * sin(th) - 0.05 * A * sin(ph + 0.5);
+  // the tail trails behind and sways
+  let tl = max(-lz - select(0.30, 0.38, manta), 0.0);
+  y += sin(ph * 0.8 - tl * 5.0) * 0.06 * tl;
+  x += sin(ph * 0.5 - tl * 3.0) * 0.03 * tl;
+  let f = normalize(b.xyz);
+  var r = cross(f, vec3f(0.0, 1.0, 0.0));
+  if (length(r) < 1e-3) { r = vec3f(1.0, 0.0, 0.0); }
+  r = normalize(r);
+  let v = cross(r, f);
+  let cb = cos(c.w);
+  let sb = sin(c.w);
+  let r2 = r * cb + v * sb;
+  let v2 = v * cb - r * sb;
+  let wp = a.xyz + (r2 * x + f * lz + v2 * y) * a.w;
+  o.pos = u.viewProj * vec4f(wp, 1.0);
+  o.wp = wp;
+  o.q = vec2f(lx, lz);
+  o.info = vec4f(b.w, c.y, f32(ii), 0.0);
+  o.upv = v2;
+  return o;
+}
+@fragment fn fsRay(i: RyOut) -> @location(0) vec4f {
+  let manta = i.info.x > 3.5;
+  let d = rayPlan(i.q, manta);
+  let w = max(fwidth(d), 1e-4);
+  let nrm = normalize(cross(dpdx(i.wp), dpdy(i.wp)));
+  let cov = clamp(0.5 - d / w, 0.0, 1.0);
+  let alpha = cov * i.info.y * 0.96;
+  if (alpha < 0.01) { discard; }
+  // the calf mostly sees their dark backs; a belly turned toward it shows pale
+  let back = dot(i.upv, u.eye.xyz - i.wp) > 0.0;
+  var col = select(vec3f(0.26, 0.30, 0.31), vec3f(0.016, 0.024, 0.034), back);
+  if (back) {
+    if (manta) { // the pale shoulder patches of a manta's back
+      let pq = vec2f(abs(i.q.x) - 0.27, i.q.y - 0.09);
+      let pr = vec2f(pq.x * 0.92 + pq.y * 0.40, -pq.x * 0.40 + pq.y * 0.92);
+      let sp = 1.0 - smoothstep(0.55, 1.15, length(pr / vec2f(0.15, 0.065)));
+      col = mix(col, vec3f(0.15, 0.19, 0.20), sp * 0.55);
+    } else { // the eagle ray's white spots
+      let sv = vnoise(vec3f(i.q * 15.0, i.info.z * 3.1));
+      col = mix(col, vec3f(0.20, 0.25, 0.26), smoothstep(0.72, 0.80, sv) * 0.7 * step(i.q.y, 0.12) * step(-0.30, i.q.y));
+    }
+  }
+  // light from the surface catching each fold of the wing
+  col += vec3f(0.04, 0.06, 0.07) * pow(abs(nrm.y), 6.0);
+  return vec4f(water(col, i.wp), alpha);
+}
+
+@fragment fn fsBase(i: VOut) -> @location(0) vec4f {
+  let n = normalize(i.wn);
+  let r = region(i.rp, normalize(i.rn), i.ex.x);
+  let wool = woolMat(r.col, r, i.rp, length(fwidth(i.rp)));
+  var c = vec3f(0.0);
+  if (r.kind == 1.0) {
+    c = light(r.col, n, i.wp, 0.0, 0.0);
+    let v = normalize(u.eye.xyz - i.wp);
+    let rf = reflect(-v, n);
+    // a wet cornea: the bright surface mirrored across the top, a rim of light, a sharp catchlight
+    c += vec3f(0.42, 0.56, 0.58) * smoothstep(-0.05, 0.6, rf.y) * 0.32;
+    c += vec3f(0.30, 0.40, 0.44) * pow(1.0 - clamp(dot(n, v), 0.0, 1.0), 3.0) * 0.45;
+    c += vec3f(1.0, 1.0, 0.96) * (pow(max(dot(rf, normalize(u.sun.xyz)), 0.0), 260.0) * 2.2 + pow(max(dot(rf, normalize(vec3f(0.3, 0.8, 0.5))), 0.0), 500.0) * 0.9);
+    // the catchlight a viewer always finds in a living eye: a small window of light just above the pupil
+    let cl = normalize(v + vec3f(0.0, 0.55, 0.0) - u.camR.xyz * 0.25);
+    c += vec3f(0.95, 0.98, 1.0) * pow(max(dot(rf, cl), 0.0), 70.0) * 0.9;
+  } else if (r.kind == 2.0) {
+    c = light(felt(r.col, i.rp), n, i.wp, 0.2, 0.0) * 0.86;
+  } else if (r.kind == 3.0) {
+    c = light(felt(r.col, i.rp), n, i.wp, 0.3, 0.0);
+  } else {
+    var col = r.col;
+    if (r.emb < 0.5) { col = wool; }
+    c = light(col, n, i.wp, 0.25, 0.0);
+  }
+  return vec4f(c, 1.0);
+}
+
+
+// one set of wool fibres: the iso-line of a warped noise is a long, curling, wandering thread.
+// Its thickness is measured on screen (via fwidth), so every fibre stays a crisp hair at any distance;
+// when the threads crowd closer than a few pixels apart they fade into their average tone instead of shimmering.
+// Must be called from uniform control flow.
+fn woolFib(p: vec3f, s: f32, off: vec3f, wpx: f32, pix: f32) -> f32 {
+  let q = p * s + off;
+  let a = vnoise(q * 0.37 + off.yzx);
+  let b = vnoise(q * 0.33 + off.zxy + vec3f(3.1, 7.3, 1.7));
+  let f = vnoise(q + vec3f(a, b, a - b + 0.5) * 2.2);
+  let d = abs(f - 0.5) / max(fwidth(f), 1e-6);           // distance to the fibre's centre, in pixels
+  let line = clamp(wpx - d + 0.5, 0.0, 1.0);
+  let spacing = 0.45 / max(s * pix, 1e-6);                // roughly how many pixels lie between fibres
+  return mix(0.12 * wpx, line, smoothstep(1.2, 3.2, spacing));
+}
+// heather roving: white, pale grey, charcoal and a little blue-grey, carded together and felted into a mat
+fn woolMat(col: vec3f, reg: Reg, p: vec3f, pix: f32) -> vec3f {
+  let white = vec3f(0.94, 0.93, 0.91);
+  let pale = vec3f(0.74, 0.74, 0.74);
+  let dark = vec3f(0.17, 0.17, 0.19);
+  let blue = vec3f(0.34, 0.37, 0.44);
+  // denser: every layer about 1.7x finer, plus three more layers
+  let f1 = woolFib(p, 78.0, vec3f(1.0, 2.0, 3.0), 1.15, pix);
+  let f2 = woolFib(p, 66.0, vec3f(17.0, 5.0, 9.0), 1.1, pix);
+  let f3 = woolFib(p, 94.0, vec3f(4.0, 23.0, 11.0), 1.0, pix);
+  let f4 = woolFib(p, 107.0, vec3f(31.0, 8.0, 2.0), 0.9, pix);
+  let f5 = woolFib(p, 122.0, vec3f(6.0, 41.0, 19.0), 0.9, pix);
+  let f6 = woolFib(p, 87.0, vec3f(13.0, 29.0, 37.0), 1.0, pix);
+  let f7 = woolFib(p, 140.0, vec3f(23.0, 3.0, 29.0), 0.85, pix);
+  let f8 = woolFib(p, 160.0, vec3f(41.0, 17.0, 7.0), 0.85, pix);
+  let f9 = woolFib(p, 131.0, vec3f(9.0, 33.0, 47.0), 0.85, pix);
+  let g1 = woolFib(p, 115.0, vec3f(51.0, 13.0, 23.0), 0.9, pix);
+  let g2 = woolFib(p, 150.0, vec3f(7.0, 57.0, 31.0), 0.85, pix);
+  let g3 = woolFib(p, 100.0, vec3f(37.0, 43.0, 5.0), 0.95, pix);
+  // clouds where the carded roving ran pale or dark, as on a needle-felted toy
+  let cloud = vnoise(p * 5.5 + vec3f(3.0, 9.0, 1.0)) * 0.65 + vnoise(p * 13.0) * 0.35;
+  let lightPatch = smoothstep(0.50, 0.72, cloud) * (1.0 - 0.6 * reg.dk);
+  let darkPatch = smoothstep(0.44, 0.24, cloud) + 0.6 * reg.dk;
+  // the mat underneath: packed fibres too fine to tell apart
+  var c = mix(col, pale, 0.25 + 0.35 * lightPatch) * (0.78 + 0.25 * vnoise(p * 30.0));
+  c = mix(c, dark, clamp(darkPatch, 0.0, 1.0) * 0.45);
+  c = mix(c, dark, f7 * (0.4 + 0.6 * clamp(darkPatch, 0.0, 1.0)));
+  c = mix(c, pale, f8 * 0.7);
+  c = mix(c, white, f9 * (0.25 + 0.75 * lightPatch));
+  c = mix(c, dark, f2 * (0.45 + 0.55 * reg.dk) * 0.95);
+  c = mix(c, pale, f1 * 0.85);
+  c = mix(c, blue, f4 * 0.6);
+  c = mix(c, dark, f6 * (0.25 + 0.75 * reg.dk) * 0.9);
+  c = mix(c, white, f3 * (0.45 + 0.55 * max(reg.lt, lightPatch)) * (1.0 - 0.5 * reg.dk));
+  c = mix(c, white, f5 * (0.5 + 0.45 * lightPatch) * (1.0 - 0.45 * reg.dk));
+  c = mix(c, dark, g1 * (0.3 + 0.7 * clamp(darkPatch, 0.0, 1.0)) * 0.9);
+  c = mix(c, pale, g3 * 0.75);
+  c = mix(c, white, g2 * (0.35 + 0.6 * lightPatch) * (1.0 - 0.45 * reg.dk));
+  return c;
+}
+@fragment fn fsShell(i: VOut) -> @location(0) vec4f {
+  let pix = length(fwidth(i.rp));
+  let h = i.ex.y;
+  // every layer above the mat holds its own loose fibres, fewer the higher they float
+  let off = vec3f(h * 13.7, h * 5.3, h * 9.1) * 7.0;
+  let line = woolFib(i.rp, 74.0, off, mix(1.0, 0.75, h), pix);
+  let tone = vnoise(i.rp * 23.0 + off);
+  let rn = normalize(i.rn);
+  let reg = region(i.rp, rn, i.ex.x);
+  if (reg.kind > 0.5 || reg.emb > 0.5) { discard; }
+  let keep = smoothstep(0.30 + 0.40 * h, 0.50 + 0.34 * h, vnoise(i.rp * 9.0 + off * 0.1));
+  let cov = line * keep;
+  if (cov < 0.04) { discard; }
+  var fc = mix(vec3f(0.72, 0.72, 0.72), vec3f(0.94, 0.93, 0.91), smoothstep(0.45, 0.72, tone) * (1.0 - 0.6 * reg.dk));
+  fc = mix(fc, vec3f(0.17, 0.17, 0.19), smoothstep(0.42, 0.20, tone) * (0.35 + 0.65 * reg.dk));
+  let col = light(fc * (0.88 + 0.15 * h), normalize(i.wn), i.wp, 0.3 * h, 0.0);
+  return vec4f(col, cov);
+}
+
+// ===================== realistic sperm whale: skin =====================
+fn rotTo(a: vec3f, b: vec3f, v: vec3f) -> vec3f { // the rotation that takes a onto b, applied to v
+  let c = dot(a, b);
+  let k = cross(a, b);
+  if (c < -0.999) { return -v; }
+  return v * c + cross(k, v) + k * (dot(k, v) / (1.0 + c));
+}
+fn bumpN(n: vec3f, wp: vec3f, h: f32) -> vec3f {
+  let dpx = dpdx(wp);
+  let dpy = dpdy(wp);
+  let dhx = dpdx(h);
+  let dhy = dpdy(h);
+  let r1 = cross(dpy, n);
+  let r2 = cross(n, dpx);
+  let det = dot(dpx, r1);
+  let g = sign(det) * (dhx * r1 + dhy * r2);
+  return normalize(abs(det) * n - g);
+}
+// the body behind the head is creased in broken, wavy, roughly lengthwise wrinkles (contour lines of a stretched noise);
+// the head is smoother
+fn crease(v: f32, w: f32) -> f32 { return 1.0 - smoothstep(0.0, w, abs(v - 0.5)); }
+fn rskinH(p: vec3f, fw: f32) -> f32 {
+  let body = smoothstep(0.34, 0.04, p.x);
+  let q = vec3f(p.x * 14.0, p.y * 75.0 + vnoise(p * 5.0) * 6.0, p.z * 14.0);
+  let a = crease(vnoise(q), 0.09 + 0.08 * vnoise(p * 7.0)) * (0.3 + 0.7 * vnoise(p * 3.0 + vec3f(5.0, 2.0, 1.0)));
+  let b = crease(vnoise(q * vec3f(1.7, 1.9, 1.7) + vec3f(11.0, 3.0, 7.0)), 0.11) * 0.6;
+  let fq = fw * 0.5;
+  let fade = 1.0 - smoothstep(0.12, 0.4, fq);
+  var h = (a + b) * body * fade;
+  h += (vnoise(p * 11.0) - 0.5) * 0.45 + (vnoise(p * 34.0) - 0.5) * 0.15 * (1.0 - smoothstep(0.15, 0.5, fq));
+  return h;
+}
+fn rskinCol(p: vec3f, app: f32) -> vec3f {
+  let mott = vnoise(p * 4.0 + vec3f(1.0, 2.0, 3.0)) * 0.6 + vnoise(p * 15.0) * 0.4;
+  var c = mix(vec3f(0.37, 0.355, 0.34), vec3f(0.22, 0.212, 0.205), smoothstep(-0.12, 0.18, p.y));
+  c *= 0.84 + 0.32 * mott;
+  // pale patches low on the belly
+  let bel = smoothstep(-0.10, -0.20, p.y) * smoothstep(0.5, 0.72, vnoise(p * 5.0 + vec3f(7.0, 1.0, 3.0))) * smoothstep(0.25, -0.10, p.x);
+  c = mix(c, vec3f(0.60, 0.60, 0.58), bel * 0.7);
+  // pale scars from squid and other whales, most of them on the head: thin, broken, wandering marks
+  let hd = 0.3 + 0.7 * smoothstep(0.10, 0.40, p.x);
+  let wp2 = p + vec3f(vnoise(p * 9.0), vnoise(p * 9.0 + vec3f(5.0)), vnoise(p * 9.0 + vec3f(9.0))) * 0.06;
+  let s1 = crease(vnoise(wp2 * vec3f(16.0, 22.0, 16.0)), 0.02) * smoothstep(0.55, 0.75, vnoise(p * 4.0 + vec3f(9.0, 1.0, 5.0)));
+  let s2 = smoothstep(0.62, 0.8, vnoise(p * 26.0 + vec3f(3.0, 8.0, 1.0))) * smoothstep(0.5, 0.7, vnoise(p * 3.0 + vec3f(2.0, 2.0, 7.0)));
+  c = mix(c, vec3f(0.58, 0.57, 0.55), clamp(s1 * 0.3 + s2 * 0.22, 0.0, 1.0) * hd);
+  return c * mix(1.0, 0.85, app);
+}
+@fragment fn fsReal(i: VOut) -> @location(0) vec4f {
+  let p = i.rp;
+  let n0 = normalize(i.wn);
+  let side = select(-1.0, 1.0, p.z > 0.0);
+  // eye-local coordinates: an almond opening, slightly tilted, closed by the lids when she blinks
+  let opn = max(1.0 - u.look.w, 0.03);
+  let ex = (p.x - EX) / 0.026;
+  let eyy = (p.y - EY - 0.002 * ex) / 0.011;
+  let onEye = select(0.0, 1.0, abs(p.z) > EZ - 0.04);
+  let ae = length(vec2f(ex, eyy / max(opn * (1.0 - 0.35 * ex * ex), 0.03)));
+  let er = length(vec2f(ex, eyy));
+  let fw = length(fwidth(vec3f(p.x * 14.0, p.y * 75.0, p.z * 14.0)));
+  // skin relief: a height field in the rest pose, its slope taken by finite differences along the surface
+  let rn = normalize(i.rn);
+  let t1 = normalize(cross(rn, select(vec3f(0.0, 1.0, 0.0), vec3f(1.0, 0.0, 0.0), abs(rn.y) > 0.9)));
+  let t2 = cross(rn, t1);
+  let app = i.ex.x;
+  let amp = 0.0012 * (1.0 - app);
+  var g = vec3f(0.0);
+  if (amp > 0.0) {
+    let e = 0.0016;
+    let h0 = rskinH(p, fw);
+    let h1 = rskinH(p + t1 * e, fw);
+    let h2 = rskinH(p + t2 * e, fw);
+    g = (t1 * (h1 - h0) + t2 * (h2 - h0)) / e * amp;
+  }
+  let ef = smoothstep(2.4, 1.3, er) * smoothstep(0.95, 1.3, er) * onEye;
+  g += (rn * 0.0) + normalize(vec3f(p.x - EX, p.y - EY, 0.0) + vec3f(1e-5)) * cos(er * 9.0) * 0.12 * ef;
+  let rnb = normalize(rn - g);
+  let n = normalize(rotTo(rn, n0, rnb));
+
+  var col = rskinCol(p, i.ex.x);
+  // white lips along the line of the mouth
+  let lip = (1.0 - smoothstep(0.004, 0.016, abs(p.y - YMOUTH))) * smoothstep(MX0 - 0.03, MX0 + 0.02, p.x) * (1.0 - smoothstep(0.09, 0.15, abs(p.z)));
+  col = mix(col, vec3f(0.80, 0.79, 0.75), lip);
+  col = mix(col, vec3f(0.06, 0.06, 0.07), (1.0 - smoothstep(0.0008, 0.0026, abs(p.y - YMOUTH))) * smoothstep(MX0 - 0.01, MX0 + 0.01, p.x) * (1.0 - smoothstep(0.09, 0.15, abs(p.z))));
+  // the narrow lower jaw: pale grey sides, a white upper edge
+  let jaw = select(0.0, 1.0, p.y < YMOUTH - 0.002 && p.x > 0.22 && abs(p.z) < 0.065) * smoothstep(0.22, 0.32, p.x);
+  col = mix(col, mix(rskinCol(p, 0.0) * 1.35, vec3f(0.78, 0.77, 0.73), smoothstep(-0.192, -0.176, p.y)), jaw * 0.9);
+  // the blowhole: an S-shaped slit at the front of the head, set to the left
+  if (n0.y > 0.4 && abs(p.x - BX) < 0.03) {
+    let zc = BZ + 0.007 * sin((p.x - BX) * 110.0);
+    col = mix(col, vec3f(0.03, 0.03, 0.03), 1.0 - smoothstep(0.0015, 0.0035, abs(p.z - zc)));
+  }
+  // the lids are darker than the face around them
+  col *= 1.0 - 0.35 * smoothstep(1.8, 1.0, er) * onEye;
+  var c = light(col, n, i.wp, 0.12, 0.28);
+  if (ae < 1.0 && onEye > 0.5) {
+    let toCalf = normalize(u.look.xyz - vec3f(EX, EY, EZ * side));
+    let wx = p.x - EX - clamp(toCalf.x * 0.35, -0.35, 0.35) * 0.010;
+    let wy = p.y - EY - clamp(toCalf.y * 0.5, -0.3, 0.3) * 0.004;
+    let r = length(vec2f(wx, wy)) / 0.0095;
+    let fib = vnoise(vec3f(atan2(wy, wx) * 9.0, r * 6.0, 1.0));
+    var ec = vec3f(0.30, 0.26, 0.23);
+    ec = mix(ec, vec3f(0.22, 0.13, 0.07) * (0.7 + 0.6 * fib), 1.0 - smoothstep(0.92, 1.0, r));
+    ec = mix(ec, vec3f(0.05, 0.035, 0.03), smoothstep(0.80, 0.95, r) * (1.0 - smoothstep(0.98, 1.05, r)));
+    ec = mix(ec, vec3f(0.01, 0.009, 0.011), 1.0 - smoothstep(0.38, 0.46, r));
+    ec = mix(ec, vec3f(0.02, 0.02, 0.02), smoothstep(0.7, 1.0, ae));
+    var ce = light(ec, n0, i.wp, 0.0, 0.0);
+    let v = normalize(u.eye.xyz - i.wp);
+    let rf = reflect(-v, n0);
+    ce += vec3f(0.42, 0.56, 0.58) * smoothstep(-0.05, 0.6, rf.y) * 0.30;
+    ce += vec3f(1.0, 1.0, 0.96) * pow(max(dot(rf, normalize(u.sun.xyz)), 0.0), 260.0) * 2.0;
+    let cl = normalize(v + vec3f(0.0, 0.55, 0.0) - u.camR.xyz * 0.25);
+    ce += vec3f(0.95, 0.98, 1.0) * pow(max(dot(rf, cl), 0.0), 70.0) * 0.8;
+    c = mix(c, ce, 1.0 - smoothstep(0.85, 1.0, ae));
+  }
+  return vec4f(c, 1.0);
+}
+`;
+}
+
+// ===================== scene: the calf's eyes, the mother, the dive =====================
+const $ = s => document.querySelector(s);
+const canvas = $('#gpu');
+const SURF = 0;
+const FABRIC = { top: [0.64, 0.65, 0.66], top2: [0.27, 0.28, 0.30], belly: [0.91, 0.90, 0.87], thread: [0.16, 0.17, 0.19] };
+const MOBILE = matchMedia('(pointer: coarse)').matches || /Android|iPhone|iPad/i.test(navigator.userAgent);
+const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const QUAL = [{ shells: 14, dpr: 2 }, { shells: 11, dpr: 1.6 }, { shells: 8, dpr: 1.3 }, { shells: 6, dpr: 1.0 }];
+const Q_MIN = MOBILE ? 1 : 0;
+let qi = Q_MIN;
+const N_FIB = MOBILE ? 266 : 455;
+const FIB_SEG = 10;
+const SUN = (() => { const v = [-0.25, 1, 0.18], l = Math.hypot(...v); return v.map(x => x / l); })();
+const REST_Y = -0.30;          // mother's centre while she lies at the surface
+const EYE_Y = -0.32;           // the calf's eye, just under the skin of the water
+
+// ---------- tiny vector helpers ----------
+function norm3(v) { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; }
+function cross3(a, b) { return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]; }
+function perspective(fy, asp, n, f) { const t = 1 / Math.tan(fy / 2), nf = 1 / (n - f); return [t / asp, 0, 0, 0, 0, t, 0, 0, 0, 0, f * nf, -1, 0, 0, n * f * nf, 0]; }
+function mul4(a, b) { const r = new Array(16); for (let c = 0; c < 4; c++) for (let rr = 0; rr < 4; rr++) { let s = 0; for (let k = 0; k < 4; k++) s += a[k * 4 + rr] * b[c * 4 + k]; r[c * 4 + rr] = s; } return r; }
+function mPoint(lx, ly, lz) { return localToWorldBent(lx, ly, lz, [0, 0, 0]); }
+
+// ---------- the calf: where it is and where it looks ----------
+const cam = { pos: [0, EYE_Y, 1.7], eye: [0, EYE_Y, 1.7], yaw: 0, pitch: 0, oy: 0, op: 0, idle: 99, f: [1, 0, 0], r: [0, 0, 1], u: [0, 1, 0], aspect: 1.6, fovY: 0.9, tanH: 0.45, bobT: 0, fit: 0 };
+// a point beside the mother in her own frame (x toward her head, z out to her right, y up), kept level with the sea
+function besideAnchor(lx, lz, ly) {
+  const fx = Math.cos(S.yaw), fz = -Math.sin(S.yaw), sx = Math.sin(S.yaw), sz = Math.cos(S.yaw);
+  return [S.pos[0] + fx * lx + sx * lz, REST_Y + ly, S.pos[2] + fz * lx + sz * lz];
+}
+// swimming alongside, just behind her right flipper
+const NEST = [-0.30, 0.62, -0.10];
+function baseFov() { return cam.aspect >= 1 ? 52 * Math.PI / 180 : Math.min(1.55, 2 * Math.atan(Math.tan(31 * Math.PI / 180) / cam.aspect)); }
+function viewProj() {
+  cam.fovY = Math.max(baseFov(), cam.fit);
+  cam.tanH = Math.tan(cam.fovY / 2);
+  const yaw = cam.yaw + cam.oy, pitch = clamp(cam.pitch + cam.op, -1.45, 1.4);
+  const f = [Math.cos(pitch) * Math.cos(yaw), Math.sin(pitch), -Math.cos(pitch) * Math.sin(yaw)];
+  const r = norm3(cross3(f, [0, 1, 0])), u = cross3(r, f), e = cam.eye;
+  cam.f = f; cam.r = r; cam.u = u;
+  const view = [r[0], u[0], -f[0], 0, r[1], u[1], -f[1], 0, r[2], u[2], -f[2], 0,
+    -(r[0] * e[0] + r[1] * e[1] + r[2] * e[2]), -(u[0] * e[0] + u[1] * e[1] + u[2] * e[2]), f[0] * e[0] + f[1] * e[1] + f[2] * e[2], 1];
+  return mul4(perspective(cam.fovY, cam.aspect, 0.02, 200), view);
+}
+// world point → the mother's own rest frame (good near the head, where her spine barely bends)
+function toLocal(w) {
+  const [cp, sp, cy, sy, cr, sr] = TW;
+  const dx = w[0] - S.pos[0], dy = w[1] - S.pos[1], dz = w[2] - S.pos[2];
+  const x1 = dx * cy - dz * sy, z0 = dx * sy + dz * cy, y1 = dy;
+  const lx = x1 * cp + y1 * sp, y0 = -x1 * sp + y1 * cp;
+  return [lx, y0 * cr + z0 * sr, -y0 * sr + z0 * cr];
+}
+const BLINK = { t: -1, next: 3 };
+function blinkAmt() { return BLINK.t < 0 ? 0 : Math.sin(Math.PI * clamp(BLINK.t / 0.32, 0, 1)); }
+
+// ---------- breath ----------
+const BR = { t: -1, next: 16, held: 0, ask: 0, p: 0, asks: 0, blockSaid: -9 };
+const BREATH_HOLD = 22; // the breath line empties over this long
+function breathEnv() {
+  const t = BR.t; if (t < 0) return 0;
+  if (t < 1.1) return sstep(0, 1.1, t);
+  if (t < 2.9) return 1;
+  return 1 - sstep(2.9, 4.6, t);
+}
+function breathe() {
+  if (BR.t >= 0) return;
+  if (SHIP.block) { // a ship is passing overhead: going up now would be dangerous
+    const now = performance.now() / 1000;
+    if (now - BR.blockSaid > 4) { BR.blockSaid = now; showCap('지금은 올라갈 수 없어요. 배가 지나가고 있어요.', true); }
+    return;
+  }
+  BR.t = 0; BR.ask = 0;
+}
+function askBreath() { // "숨이 차요": the button calls for a moment, then the calf goes up on its own
+  if (BR.t >= 0 || BR.ask > 0) return;
+  BR.ask = 6;
+  if (SHIP.block) { BR.asks++; showCap('숨이 차요. 하지만 배가 지나갈 때까지 기다려야 해요.', true); return; }
+  showCap(BR.asks++ === 0 ? '숨이 차요. 물 위로 올라갔다 와야 해요.' : '또 숨이 차요. 숨 쉬러 올라가요.', true);
+}
+function updateBreath(dt) {
+  if (BR.t >= 0) {
+    const prev = BR.t; BR.t += dt;
+    if (prev < 1.15 && BR.t >= 1.15) { RING2 = [cam.pos[0], cam.pos[2], 0]; calfBreathSound(); BR.held = 0; }
+    if (BR.t > 4.6) { BR.t = -1; BR.next = 20 + Math.random() * 5; }
+  } else {
+    BR.held += dt; BR.next -= dt;
+    if (BR.ask > 0) { if (SHIP.block) BR.ask = Math.min(BR.ask, 1.5); else { BR.ask -= dt; if (BR.ask <= 0) breathe(); } }
+    else {
+      // while the mother is down, the calf goes up when it runs short of breath
+      const below = M.ph === 'fluke' || M.ph === 'descend' || M.ph === 'away' || M.ph === 'ascend';
+      if (below && BR.p > 0.6) askBreath();
+      const busy = below || M.ph === 'ascend' || (M.ph === 'reunion' && M.t < 8);
+      if (BR.next <= 0 && !busy) breathe();
+      if (BR.held > 50 && !SHIP.block) breathe();
+    }
+  }
+  // how short of breath the calf is: nothing for a while, then rising; gone again after a breath
+  // only below, waiting for her, does running short of breath close in; at the surface the calf just breathes
+  const deepNow = M.ph === 'fluke' || M.ph === 'descend' || M.ph === 'away' || M.ph === 'ascend';
+  const target = BR.t >= 0 || !deepNow ? 0 : sstep(10, 27, BR.held);
+  BR.p += (target - BR.p) * Math.min(1, dt * (target < BR.p ? 2.2 : 0.7));
+}
+
+// ---------- the mother: a scripted day at the surface and a dive ----------
+const M = { ph: 'rest', t: 0, cycle: 0, nextBlow: 3, codaDone: false, calfAt: -1, replyAt: -1, clickNext: 0, stay: [0, EYE_Y, 0], arrive: [0, REST_Y, 0], hidden: false, yaw0: 0, caps: [] };
+let RING1 = [0, 0, -1], RING2 = [0, 0, -1];
+const CAPS = {
+  rest: [[2, '수면 바로 아래, 엄마고래 곁.', 'first'], [8.6, '엄마가 불러요. 나도 대답해요.']],
+  gather: [[1, '엄마가 숨을 길게 모아요.']],
+  fluke: [[1.2, '엄마가 몸을 세워요.']],
+  descend: [[5, '엄마가 빛이 닿지 않는 곳으로 내려가요.'], [13.5, '나는 따라갈 수 없어요. 아직 숨이 짧기 때문이에요.'], [22, '수면 가까이에 남아 엄마가 돌아오기를 기다려요.']],
+  away: [[9, '저 아래에서 딸깍, 딸깍, 엄마의 소리예요.'], [21.5, '소리가 빨라지네요, 사냥하는 소리.'], [35.5, '머리 위로 커다란 그림자가 지나가요.'], [41.5, '엄마 소리가 들리지 않아요.'], [54, '소리가 멎었어요.'], [61, '다시, 소리.']],
+  ascend: [[4, '소리가 가까워져요.'], [14, '어둠 속에서 무언가 떠올라요.']],
+  reunion: [[1.5, '다시, 같이 숨을 쉬어요.'], [9, '수면 바로 아래, 엄마의 곁에서.']],
+};
+const AWAY_LEN = 70;
+function enter(ph) {
+  M.ph = ph; M.t = 0; M.codaDone = false; M.calfAt = -1; M.replyAt = -1; M.saw = false; M.together = false; M.shipDone = false; M.endShown = false;
+  M.caps = (CAPS[ph] || []).filter(c => !(c[2] === 'first' && M.cycle > 0)).map(c => c.slice());
+  if (ph === 'rest') M.nextBlow = 2.5;
+  if (ph === 'gather') M.nextBlow = 0.8;
+  if (ph === 'reunion') M.nextBlow = 1.9;
+  if (ph === 'away' && FV.q.length === 0) FV.last = '';
+  if (ph === 'fluke') M.stay = cam.pos.slice();
+  if (ph === 'descend') M.clickNext = 2;
+  if (ph === 'away') { M.hidden = true; M.clickNext = 1.2; M.yaw0 = cam.yaw; M.cre = [[1, 'eagles'], [6, 'jelly'], [9, 'manta'], [17, 'schoolC'], [25, 'turtle'], [33, 'jelly2'], [40, 'schoolB'], [48, 'schoolD'], [56, 'jelly3'], [61, 'schoolA']]; }
+  if (ph === 'ascend') placeForAscent();
+}
+function placeForAscent() {
+  // she rises from far below, ahead of where the calf is looking, and arrives a little to its side
+  const vx = Math.cos(cam.yaw), vz = -Math.sin(cam.yaw);
+  M.arrive = [M.stay[0] + vx * 1.6, REST_Y, M.stay[2] + vz * 1.6];
+  const ya = cam.yaw + 0.55, fx = Math.cos(ya), fz = -Math.sin(ya);
+  S.pos = [M.arrive[0] - fx * 6.3, -17, M.arrive[2] - fz * 6.3];
+  S.yaw = ya; S.pitch = 1.12; S.speed = 0.5; S.yawRate = 0; S.kTurn = 0; S.kPitch = 0; S.roll = 0; S.nod = 0; S.nodV = 0;
+  computeGoals(); SIM.x.set(SIM.goal); SIM.prev.set(SIM.goal); SIM.vel.fill(0); SIM.lag.fill(0); SIM.lagV.fill(0);
+  M.hidden = false;
+}
+// one step of swimming toward a heading, pitch and speed; the spine and stroke follow from these
+function steer(dt, o) {
+  S.time += dt;
+  S.beatHz = o.beat;
+  S.phase += TAU * o.beat * dt; S.finPhase += TAU * 0.25 * dt;
+  S.waveAmp += (o.amp - S.waveAmp) * Math.min(1, dt * 1.2);
+  S.wrigAmp *= Math.exp(-dt * 3);
+  const err = o.yawT == null ? 0 : wrapA(o.yawT - S.yaw);
+  const rateT = clamp(err * 0.6, -0.3, 0.3) + (o.drift || 0);
+  S.yawRate += (rateT - S.yawRate) * Math.min(1, dt);
+  S.yaw = wrapA(S.yaw + S.yawRate * dt);
+  S.speed += (o.speed - S.speed) * Math.min(1, dt * (o.kS || 0.6));
+  const cp = Math.cos(S.pitch), fx = Math.cos(S.yaw), fz = -Math.sin(S.yaw);
+  S.pos[0] += fx * S.speed * cp * dt; S.pos[2] += fz * S.speed * cp * dt; S.pos[1] += S.speed * Math.sin(S.pitch) * dt;
+  if (o.yHold != null) S.pos[1] += (o.yHold - S.pos[1]) * Math.min(1, dt * 0.6);
+  const prevP = S.pitch;
+  S.pitch += (o.pitch - S.pitch) * Math.min(1, dt * (o.kP || 0.8));
+  S.pitchRate = dt > 0 ? (S.pitch - prevP) / dt : 0;
+  const sp = Math.max(Math.abs(S.speed), 0.25);
+  S.kTurn += (clamp(S.yawRate / sp * 0.55, -0.8, 0.8) - S.kTurn) * Math.min(1, dt * 3);
+  S.kPitch += (clamp(S.pitchRate / sp * 0.6, -0.5, 0.5) - S.kPitch) * Math.min(1, dt * 3);
+  S.roll += (clamp(-S.yawRate * 0.25, -0.16, 0.16) - S.roll) * Math.min(1, dt * 2);
+  S.nodV += (-70 * S.nod - 7 * S.nodV) * dt; S.nod += S.nodV * dt;
+  S.codaT = Math.max(0, S.codaT - dt);
+  S.jawT = 0;
+  const closing = S.jawT < S.jaw;
+  S.jawV += ((S.jawT - S.jaw) * (closing ? 600 : 140) - S.jawV * (closing ? 30 : 15)) * dt;
+  S.jaw = clamp(S.jaw + S.jawV * dt, -0.02, 0.85);
+  if (S.jaw <= -0.02 && S.jawV < 0) S.jawV = 0;
+}
+function blows(t, every) {
+  if (t < M.nextBlow) return;
+  M.nextBlow = t + every * (0.85 + 0.3 * Math.random());
+  computeGoals();
+  const b = mPoint(BLOW.x, BLOW.y, BLOW.z);
+  RING1 = [b[0], b[2], 0];
+  S.nodV += 1.0;
+  motherBlowSound(b);
+}
+function clicks(dt, interval) {
+  M.clickNext -= dt;
+  if (interval > 0 && M.clickNext <= 0) { echoClick(0.5); M.clickNext = interval * (0.85 + 0.3 * Math.random()); }
+}
+// ---------- the mother's voice from the deep ----------
+// Never a metronome: what reaches the calf is a run of pieces chosen afresh each time. Echolocation trains of
+// uneven length and loudness whose pace drifts, codas in the rhythms recorded off Dominica at their own tempo,
+// now and then a buzz as she closes on a squid, and silences of different lengths in between.
+const FV = { mode: 'off', q: [], segEnd: 0, now: 0, last: '' };
+const rnd = (a, b) => a + Math.random() * (b - a);
+function fvTrain(t0, nMin, nMax) {
+  const n = Math.round(rnd(nMin, nMax)); let iv = rnd(0.5, 1.05), t = t0;
+  const drift = rnd(-0.03, 0.05), loud = rnd(0.55, 1.0);
+  for (let k = 0; k < n; k++) {
+    FV.q.push([t, loud * rnd(0.55, 1.0) * (k === 0 ? 0.7 : 1)]);
+    iv = clamp(iv + drift + rnd(-0.06, 0.06), 0.35, 1.3);
+    t += iv * rnd(0.85, 1.15);
+  }
+  return t + rnd(0.2, 0.6);
+}
+function fvCoda(t0) {
+  const c = CODAS[Math.floor(Math.random() * CODAS.length)], tempo = rnd(0.8, 1.2), loud = rnd(0.75, 1.0);
+  for (const tt of c.t) FV.q.push([t0 + tt * tempo * rnd(0.96, 1.04), loud * rnd(0.85, 1.0)]);
+  return t0 + c.t[c.t.length - 1] * tempo + rnd(0.8, 1.6);
+}
+function fvBuzz(t0) { // the clicks run together as she closes in, then stop
+  let t = t0, iv = 0.34; const end = t0 + rnd(2.0, 2.8);
+  while (t < end) { FV.q.push([t, rnd(0.45, 0.65) * (0.7 + 0.3 * (iv / 0.34))]); iv = Math.max(0.03, iv * 0.86); t += iv; }
+  return t + 0.3;
+}
+function fvNext(t0) {
+  let r = Math.random();
+  if (FV.last === 'silence') r = r * 0.8;                 // two silences in a row are rare
+  if (FV.last === 'coda' && r < 0.6) r = 0.9;           // after a coda, usually a pause
+  let end, kind;
+  if (r < 0.42) { kind = 'train'; end = fvTrain(t0, 3, 10); }
+  else if (r < 0.60) { kind = 'coda'; end = fvCoda(t0); }
+  else { kind = 'silence'; end = t0 + rnd(2.0, 6.0); }
+  FV.last = kind; FV.segEnd = end;
+}
+function farVoice(dt, mode) {
+  FV.now += dt;
+  const now = FV.now;
+  if (mode !== FV.mode) {
+    // when the story asks for silence, she stops at once; when it asks for sound, she starts with a train
+    if (mode === 'off' || mode === 'buzz') FV.q.length = 0;
+    if (mode === 'buzz') { FV.segEnd = fvBuzz(now + 0.1); FV.last = 'buzz'; }
+    if (mode === 'mix' && FV.mode === 'off') { FV.q.length = 0; FV.segEnd = fvTrain(now + rnd(0.3, 1.2), 4, 9); FV.last = 'train'; }
+    FV.mode = mode;
+  }
+  if (mode === 'mix' && now >= FV.segEnd && !FV.q.length) fvNext(now);
+  // fire what is due, placed exactly within the coming moment
+  while (FV.q.length && FV.q[0][0] <= now + 0.05) {
+    const [tc, amp] = FV.q.shift();
+    if (AU.ctx) clickAt(AU.ctx.currentTime + Math.max(0.005, tc - now + 0.03), 0.5 * amp, AU.mIn, -200);
+    if (window.__fvLog) window.__fvLog.push(+tc.toFixed(2));
+  }
+}
+function awayMode(t) {
+  if (t < 2.5) return 'off';
+  if (t < 22) return 'mix';
+  if (t < 25.5) return 'buzz';       // "소리가 빨라지네요"
+  if (t < 27.5) return 'off';
+  if (t < 53) return 'mix';          // under the ship's noise
+  if (t < 61) return 'off';        // "소리가 멎었어요"
+  return 'mix';                      // "다시, 소리"
+}
+function director(dt) {
+  M.t += dt;
+  const t = M.t;
+  while (M.caps.length && t >= M.caps[0][0]) { const c = M.caps.shift(); showCap(c[1]); if (c[2] === 'breath') askBreath(); }
+  if (M.replyAt > 0 && t >= M.replyAt) { M.replyAt = -1; motherCoda(M.replyCoda, M.replyTempo); M.replyCoda = null; M.replyTempo = 1; }
+  if (M.calfAt > 0 && t >= M.calfAt) { M.calfAt = -1; calfCoda(); }
+  if (M.ph === 'rest' || M.ph === 'gather' || M.ph === 'fluke' || M.ph === 'reunion') farVoice(dt, 'off');
+  switch (M.ph) {
+    case 'rest':
+      steer(dt, { drift: 0.035 * Math.sin(S.time * 0.13), pitch: 0, speed: 0.06, beat: 0.26, amp: 0.22, yHold: REST_Y });
+      blows(t, 5.5);
+      if (!M.codaDone && t > 8) { M.codaDone = true; motherCoda(CODAS[0]); M.calfAt = t + 6.5; }
+      if (t > 17) enter('gather');
+      break;
+    case 'gather':
+      steer(dt, { pitch: 0.04, speed: 0.12, beat: 0.42, amp: 0.45, yHold: REST_Y });
+      blows(t, 3.0);
+      if (!M.together && t > 4.5) { M.together = true; breathe(); }
+      if (t > 9) enter('fluke');
+      break;
+    case 'fluke':
+      steer(dt, { pitch: -1.28, kP: 0.55, speed: 0.36, kS: 0.8, beat: 0.85, amp: 1.25 });
+      if (t > 8) { M.waitFrom = performance.now(); M.waitSim = 0; enter('descend'); }
+      break;
+    case 'descend':
+      steer(dt, { pitch: -1.32, kP: 0.6, speed: 0.5, beat: 0.7, amp: 1.0 });
+      farVoice(dt, S.pos[1] < -2.2 ? 'mix' : 'off');
+      if (S.pos[1] < -15.5 || t > 34) enter('away');
+      break;
+    case 'away':
+      farVoice(dt, awayMode(t));
+      if (!M.shipDone && t > 31) { M.shipDone = true; startShip(); }
+      while (M.cre && M.cre.length && t >= M.cre[0][0]) crEvent(M.cre.shift()[1]);
+      if (t > AWAY_LEN) enter('ascend');
+      break;
+    case 'ascend': {
+      const dx = M.arrive[0] - S.pos[0], dz = M.arrive[2] - S.pos[2];
+      const deep = S.pos[1] < -2.4;
+      const pitch = deep ? 1.12 : clamp((REST_Y - S.pos[1]) * 0.9, -0.15, 0.8);
+      const speed = deep ? 0.56 : 0.2;
+      steer(dt, { yawT: Math.atan2(-dz, dx), pitch, kP: 0.5, speed, beat: deep ? 0.7 : 0.4, amp: 0.9, yHold: S.pos[1] > -0.8 ? REST_Y : null });
+      farVoice(dt, S.pos[1] < -4 ? 'mix' : 'off');
+      if (!M.saw && S.pos[1] > -4.6) { M.saw = true; showCap('엄마예요.'); }
+      if ((S.pos[1] > -0.55 && Math.abs(S.pitch) < 0.25) || t > 48) enter('reunion');
+      break;
+    }
+    case 'reunion':
+      steer(dt, { pitch: 0, speed: 0.07, beat: 0.3, amp: 0.3, yHold: REST_Y });
+      blows(t, 4.2);
+      if (!M.together && t > 1.6) { M.together = true; breathe(); } // she blows and the calf breathes with her
+      if (!M.codaDone && t > 6) { M.codaDone = true; motherCoda(CODAS[(M.cycle + 1) % CODAS.length]); M.calfAt = t + 6.5; }
+      if (!M.endShown && t > 15) {
+        M.endShown = true;
+        $('#endcard').classList.add('show');
+      }
+      if (t > 25) { $('#endcard').classList.remove('show'); M.cycle++; enter('rest'); }
+      break;
+  }
+  if (RING1[2] >= 0) RING1[2] += dt;
+  if (RING2[2] >= 0) RING2[2] += dt;
+}
+// ---------- answering her: every tap on the Coda button is one click from the calf ----------
+// After the taps stop, their rhythm is compared with her last coda by the shape of its gaps (tempo does not matter).
+// Close enough and she answers with the same coda; otherwise she says hers again, slower, for the calf to learn.
+const TAP = { list: [], last: 0, coda: null, listenUntil: 0, lastTeach: -99 };
+function tapCoda() {
+  initAudio();
+  const now = performance.now() / 1000;
+  if (AU.ctx) clickAt(AU.ctx.currentTime + 0.004, 0.42, AU.cIn, 900);
+  TAP.list.push(now); TAP.last = now;
+  M.calfAt = -1;                 // the viewer is answering; the calf need not answer by itself
+  callOn = 0.25;
+  rhythmTap(now);
+}
+function codaShapeError(taps, pattern) {
+  if (taps.length !== pattern.length) return 9;
+  const T = taps[taps.length - 1] - taps[0], P = pattern[pattern.length - 1];
+  if (T < 0.15) return 9;
+  let e = 0; // the worst-placed tap decides
+  for (let i = 0; i < taps.length; i++) e = Math.max(e, Math.abs((taps[i] - taps[0]) / T - pattern[i] / P));
+  return e;
+}
+function evaluateTaps() {
+  const taps = TAP.list.slice(); TAP.list.length = 0;
+  if (taps.length < 3) { rhythmFade(); return; }
+  const now = performance.now() / 1000;
+  const c = TAP.coda || CODAS[0];
+  const ok = codaShapeError(taps, c.t) < 0.15;
+  rhythmResult(taps, ok);
+  const far = M.ph === 'descend' || M.ph === 'away' || (M.ph === 'ascend' && S.pos[1] < -10);
+  if (far) {
+    // from the deep, if she can hear: the same coda comes back a little later
+    if (FV.mode === 'mix' && SHIP.loud < 0.3) {
+      const t0 = FV.now + 2.2;
+      for (const tt of c.t) FV.q.push([t0 + tt * 1.05, 0.95]);
+      FV.q.sort((x, y) => x[0] - y[0]);
+      FV.segEnd = Math.max(FV.segEnd, t0 + c.t[c.t.length - 1] + 1.5);
+      if (ok) setTimeout(() => showCap('깊은 곳에서 엄마가 대답해요.', true), 2400);
+    }
+    return;
+  }
+  if (!motherNear()) return;
+  if (ok) {
+    M.replyAt = M.t + 1.0; M.replyCoda = c; M.replyTempo = 1;
+    setTimeout(() => showCap('엄마가 같은 리듬으로 대답해요.', true), 1000);
+  } else if (now - TAP.lastTeach > 8) {
+    TAP.lastTeach = now;
+    M.replyAt = M.t + 1.4; M.replyCoda = c; M.replyTempo = 1.25;
+    setTimeout(() => showCap('엄마가 천천히 다시 들려줘요.', true), 1400);
+  }
+}
+function motherNear() { return M.ph === 'rest' || M.ph === 'gather' || M.ph === 'reunion' || (M.ph === 'ascend' && S.pos[1] > -10); }
+let lastCall = -9;
+function callMother() {
+  const now = performance.now() / 1000;
+  if (now - lastCall < 2.2) return;
+  lastCall = now;
+  callOn = 1.6;
+  calfCoda();
+  if (motherNear() && M.replyAt < 0 && S.codaT <= 0) M.replyAt = M.t + 1.5;
+}
+
+// ---------- where the calf goes and what it looks at ----------
+const _fitPts = [[0.88, 0, 0], [-1.36, 0, 0.44], [-1.36, 0, -0.44], [0.1, -0.24, 0.3], [0.1, -0.24, -0.3], [-0.4, 0.2, 0]];
+function wholeBodyCentre() { const h = mPoint(0.88, 0, 0), t = mPoint(-1.36, 0, 0); return [(h[0] + t[0]) / 2, (h[1] + t[1]) / 2, (h[2] + t[2]) / 2]; }
+function updateCam(dt) {
+  let anchor = M.stay, k = 0.7;
+  if (M.ph === 'rest') anchor = besideAnchor(...NEST);
+  else if (M.ph === 'gather') { anchor = besideAnchor(-0.75, 1.5, -0.04); k = 0.32; } // eases out from her side as she gets ready
+  else if (M.ph === 'reunion') { anchor = besideAnchor(...NEST); k = 0.35; }
+  if (M.ph === 'descend') { // drifts a little toward the place she went down, but never past it
+    const dx = S.pos[0] - M.stay[0], dz = S.pos[2] - M.stay[2], l = Math.hypot(dx, dz);
+    const step = Math.min(0.05 * dt, Math.max(0, l - 1.2));
+    if (l > 1e-3) { M.stay[0] += dx / l * step; M.stay[2] += dz / l * step; }
+  }
+  const kk = 1 - Math.exp(-dt * k);
+  cam.pos[0] += (anchor[0] - cam.pos[0]) * kk; cam.pos[2] += (anchor[2] - cam.pos[2]) * kk;
+  cam.pos[1] += ((anchor[1] != null ? anchor[1] : EYE_Y) - cam.pos[1]) * kk;
+
+  let T, fitWhole = false;
+  if (M.ph === 'rest' || M.ph === 'reunion') T = mPoint(0.45, -0.11, 0.10);      // her right eye and head, past the flipper
+  else if (M.ph === 'gather') T = mPoint(0.25, -0.04, 0.05);
+  else if (M.ph === 'fluke' || M.ph === 'descend') { T = wholeBodyCentre(); fitWhole = true; }
+  else if (M.ph === 'ascend') { if (S.pos[1] > -9) { T = wholeBodyCentre(); fitWhole = true; } else T = [S.pos[0], S.pos[1], S.pos[2]]; }
+  else { // away: watch the dark where she went, lift the eyes to the light for a while, then look down again
+    const t = M.t;
+    const manta = CR.list.find(c => c.type === 4 && c.pos && c.age > 3 && c.age < c.life - 3);
+    if (manta) T = manta.pos;
+    else if (SHIP.on && SHIP.t > 2 && SHIP.t < SHIP.dur + 9) T = [SHIP.pos[0] + SHIP.dir[0] * 2, SURF, SHIP.pos[2] + SHIP.dir[1] * 2];
+    else if (t < 22 || t > 50) T = [cam.pos[0] + Math.cos(M.yaw0) * 4.5, -4.6, cam.pos[2] - Math.sin(M.yaw0) * 4.5];
+    else {
+      const w = Math.sin((t - 22) / 24 * Math.PI), a = M.yaw0 + w * 1.1;
+      T = [cam.pos[0] + Math.cos(a) * 4, EYE_Y - 2.6 + 4.2 * w, cam.pos[2] - Math.sin(a) * 4];
+    }
+  }
+  const dx = T[0] - cam.pos[0], dy = T[1] - cam.pos[1], dz = T[2] - cam.pos[2];
+  let yT = Math.atan2(-dz, dx), pT = clamp(Math.atan2(dy, Math.hypot(dx, dz)), -1.38, 1.15);
+  const be = breathEnv();
+  pT = pT * (1 - be) + 0.04 * be;
+  const kl = 1 - Math.exp(-dt * (M.ph === 'away' ? 0.45 : 0.9));
+  cam.yaw = wrapA(cam.yaw + wrapA(yT - cam.yaw) * kl);
+  cam.pitch += (pT - cam.pitch) * kl;
+  // widen the eye just enough to hold her whole body while she leaves and when she comes back
+  let fitT = 0;
+  if (fitWhole && motherVisible() && be < 0.5) {
+    // measured from where the calf is turning to look, not where it looks this instant
+    const e = cam.eye, tA = Math.tan(baseFov() / 2);
+    const F = norm3([T[0] - e[0], T[1] - e[1], T[2] - e[2]]), R = norm3(cross3(F, [0, 1, 0])), Uu = cross3(R, F);
+    let need = 0;
+    for (const q of _fitPts) {
+      const p = mPoint(q[0], q[1], q[2]), v = [p[0] - e[0], p[1] - e[1], p[2] - e[2]];
+      const z = Math.max(0.25, v[0] * F[0] + v[1] * F[1] + v[2] * F[2]);
+      const x = Math.abs(v[0] * R[0] + v[1] * R[1] + v[2] * R[2]) / z, y = Math.abs(v[0] * Uu[0] + v[1] * Uu[1] + v[2] * Uu[2]) / z;
+      need = Math.max(need, y, x / cam.aspect);
+    }
+    fitT = Math.min(1.45, 2 * Math.atan(need * 1.15));
+    if (fitT <= 2 * Math.atan(tA)) fitT = 0;
+  }
+  const ft = fitT || baseFov(), fc = cam.fit || baseFov();
+  cam.fit = fc + (ft - fc) * (1 - Math.exp(-dt * (ft > fc ? 2.2 : 0.8)));
+  cam.idle += dt;
+  if (cam.idle > 6) { const d = Math.exp(-dt * 0.35); cam.oy *= d; cam.op *= d; }
+  cam.bobT += dt;
+  const bob = REDUCED ? 0 : 0.022 * Math.sin(cam.bobT * 0.9) + 0.007 * Math.sin(cam.bobT * 2.3);
+  cam.eye = [cam.pos[0], cam.pos[1] + bob + be * (SURF + 0.10 - cam.pos[1]), cam.pos[2]];
+  // she blinks now and then
+  if (BLINK.t >= 0) { BLINK.t += dt; if (BLINK.t > 0.32) { BLINK.t = -1; BLINK.next = 4 + Math.random() * 6; } }
+  else { BLINK.next -= dt; if (BLINK.next <= 0) BLINK.t = 0; }
+}
+
+// ---------- a ship passes overhead while the calf waits ----------
+// A hull about fifteen whale-lengths long crosses the surface above the calf. Its engine and propeller fill the water
+// with noise that drowns the mother's clicks, and while it is close the calf cannot go up to breathe.
+const SHIP = { on: false, t: 0, dur: 24, life: 80, pos: [0, 0, 0], yaw: 0, c: [0, 0], dir: [1, 0], loud: 0, shade: 0, block: false };
+function startShip() {
+  const look = M.yaw0, a = look + Math.PI / 2 + 0.35;
+  SHIP.dir = [Math.cos(a), -Math.sin(a)];
+  // closest approach a little to the side of the calf, ahead of where it looks
+  SHIP.c = [cam.pos[0] + Math.cos(look) * 1.9, cam.pos[2] - Math.sin(look) * 1.9];
+  SHIP.yaw = Math.atan2(SHIP.dir[1], SHIP.dir[0]);
+  SHIP.on = true; SHIP.t = 0;
+}
+function updateShip(dt) {
+  if (!SHIP.on) { SHIP.loud += (0 - SHIP.loud) * Math.min(1, dt * 0.8); SHIP.shade = 0; SHIP.block = false; return; }
+  SHIP.t += dt;
+  const s = (SHIP.t / SHIP.dur - 0.5) * 34;        // from 17 units before to 17 after the closest point
+  SHIP.pos = [SHIP.c[0] + SHIP.dir[0] * s, SURF, SHIP.c[1] + SHIP.dir[1] * s];
+  const d = Math.hypot(SHIP.pos[0] - cam.pos[0], SHIP.pos[2] - cam.pos[2]);
+  SHIP.loud += (1 / (1 + Math.pow(d / 7, 2)) - SHIP.loud) * Math.min(1, dt * 1.5);
+  SHIP.shade = 1 - sstep(4, 12, d);
+  SHIP.block = d < 12;  // close enough that the hull or its propeller wash is right above
+  if (SHIP.t > SHIP.life) { SHIP.on = false; SHIP.block = false; }
+}
+function initShipSound() {
+  const ac = AU.ctx; if (!ac || AU.ship) return;
+  AU.ship = ac.createGain(); AU.ship.gain.value = 0;
+  AU.shipPan = makePanner(ac);
+  AU.ship.connect(AU.shipPan); AU.shipPan.connect(AU.wet);
+  // engine: a deep hum with its harmonics
+  for (const [f, g] of [[37, 0.32], [74, 0.16], [111, 0.07]]) {
+    const o = ac.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f;
+    const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 220;
+    const og = ac.createGain(); og.gain.value = g;
+    o.connect(lp); lp.connect(og); og.connect(AU.ship); o.start();
+  }
+  // the hull's rumble
+  const n = ac.createBufferSource(); n.buffer = AU.white; n.loop = true;
+  const nl = ac.createBiquadFilter(); nl.type = 'lowpass'; nl.frequency.value = 160;
+  const ng = ac.createGain(); ng.gain.value = 0.9;
+  n.connect(nl); nl.connect(ng); ng.connect(AU.ship); n.start();
+  // propeller: hiss that throbs with each blade
+  const c = ac.createBufferSource(); c.buffer = AU.white; c.loop = true;
+  const cb = ac.createBiquadFilter(); cb.type = 'bandpass'; cb.frequency.value = 850; cb.Q.value = 0.6;
+  const cg = ac.createGain(); cg.gain.value = 0.10;
+  const lfo = ac.createOscillator(); lfo.frequency.value = 4.6;
+  const lg = ac.createGain(); lg.gain.value = 0.09;
+  lfo.connect(lg); lg.connect(cg.gain); lfo.start();
+  c.connect(cb); cb.connect(cg); cg.connect(AU.ship); c.start();
+}
+
+// A merchant ship, as cut-out felt blocks: a long dark hull with a red boot-top, rows of containers,
+// the white bridge house at the stern and its funnel. Local frame: x toward the bow (16 units ≈ 96 m), z across, y up from the waterline.
+function buildShipMesh() {
+  const out = [];
+  const tri = (p0, p1, p2, col) => {
+    const e1 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]], e2 = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]];
+    let n = cross3(e1, e2); const l = Math.hypot(n[0], n[1], n[2]); if (l < 1e-9) return; n = [n[0] / l, n[1] / l, n[2] / l];
+    for (const p of [p0, p1, p2]) out.push(p[0], p[1], p[2], n[0], n[1], n[2], col[0], col[1], col[2]);
+  };
+  const quad = (a, b, c, d, col) => { tri(a, b, c, col); tri(a, c, d, col); };
+  const box = (x0, x1, y0, y1, z0, z1, col) => {
+    const P = (x, y, z) => [x, y, z];
+    quad(P(x0, y1, z0), P(x0, y1, z1), P(x1, y1, z1), P(x1, y1, z0), col);              // top
+    quad(P(x1, y0, z0), P(x1, y1, z0), P(x1, y1, z1), P(x1, y0, z1), col);              // front
+    quad(P(x0, y0, z1), P(x0, y1, z1), P(x0, y1, z0), P(x0, y0, z0), col);              // back
+    quad(P(x0, y0, z1), P(x1, y0, z1), P(x1, y1, z1), P(x0, y1, z1), col);              // side
+    quad(P(x0, y0, z0), P(x0, y1, z0), P(x1, y1, z0), P(x1, y0, z0), col);              // side
+  };
+  // the hull: same plan as the dark shape seen from below
+  const beam = x => 1.35 * Math.sqrt(clamp(1 - Math.max(x - 3.5, 0) / 4.5, 0, 1)) * (1 - 0.25 * sstep(-6, -8, x));
+  const wl = 0.86; // the sides flare out from the waterline to the deck
+  const deck = x => 1.25 + 0.35 * sstep(4, 8, x);
+  const HULL = [0.09, 0.12, 0.17], BOOT = [0.50, 0.14, 0.11], DECK = [0.30, 0.34, 0.32];
+  const N = 28, xs = [];
+  for (let i = 0; i <= N; i++) xs.push(-8 + 16 * i / N);
+  for (let i = 0; i < N; i++) {
+    const xa = xs[i], xb = xs[i + 1], ba = beam(xa), bb = beam(xb), da = deck(xa), db = deck(xb);
+    for (const s of [1, -1]) {
+      const q = (x, y, b) => [x, y, s * b];
+      const band = (y0a, y1a, y0b, y1b, col) => s > 0 ? quad(q(xa, y0a, ba), q(xb, y0b, bb), q(xb, y1b, bb), q(xa, y1a, ba), col) : quad(q(xa, y0a, ba), q(xa, y1a, ba), q(xb, y1b, bb), q(xb, y0b, bb), col);
+      const bandF = (y0, y1, f0, f1, col) => { const A0 = q(xa, y0, ba * f0), A1 = q(xa, y1, ba * f1), B0 = q(xb, y0, bb * f0), B1 = q(xb, y1, bb * f1); s > 0 ? quad(A0, B0, B1, A1, col) : quad(A0, A1, B1, B0, col); };
+      bandF(-0.5, 0.18, wl, wl + (1 - wl) * 0.2, BOOT);
+      const fa = wl + (1 - wl) * 0.2;
+      { const A0 = q(xa, 0.18, ba * fa), A1 = q(xa, da, ba), B0 = q(xb, 0.18, bb * fa), B1 = q(xb, db, bb); s > 0 ? quad(A0, B0, B1, A1, HULL) : quad(A0, A1, B1, B0, HULL); }
+    }
+    quad([xa, da, -ba], [xa, da, ba], [xb, db, bb], [xb, db, -bb], DECK);
+  }
+  const bt = beam(-8), fb = wl + (1 - wl) * 0.2;
+  quad([-8, -0.5, bt * wl], [-8, 0.18, bt * fb], [-8, 0.18, -bt * fb], [-8, -0.5, -bt * wl], BOOT);
+  quad([-8, 0.18, bt * fb], [-8, deck(-8), bt], [-8, deck(-8), -bt], [-8, 0.18, -bt * fb], HULL);
+  box(-8.0, -7.6, deck(-8), deck(-8) + 0.16, -bt, bt, HULL);   // the bulwark around the stern deck
+  // containers: 40-foot boxes, stacked two to four high
+  const PAL = [[0.55, 0.20, 0.15], [0.16, 0.30, 0.48], [0.62, 0.55, 0.40], [0.22, 0.40, 0.30], [0.70, 0.42, 0.18], [0.48, 0.50, 0.52], [0.40, 0.16, 0.20]];
+  let rs = 7;
+  const rnd = () => (rs = (rs * 16807) % 2147483647) / 2147483647;
+  for (let bay = 0; bay < 5; bay++) {
+    const x0 = -4.6 + bay * 2.05, x1 = x0 + 1.95;
+    const half = Math.min(beam(x0), beam(x1)) - 0.12, rows = Math.floor(half * 2 / 0.41);
+    for (let r = 0; r < rows; r++) {
+      const z0 = -rows * 0.41 / 2 + r * 0.41, tiers = 2 + Math.floor(rnd() * 3 - (r === 0 || r === rows - 1 ? 1 : 0));
+      for (let k = 0; k < tiers; k++) box(x0, x1, deck(x0) + k * 0.43, deck(x0) + k * 0.43 + 0.41, z0 + 0.01, z0 + 0.40, PAL[Math.floor(rnd() * PAL.length)]);
+    }
+  }
+  // the bridge house, its windows, the bridge wings, the funnel and a foremast
+  const WHITE = [0.86, 0.85, 0.80], DARK = [0.06, 0.08, 0.10], FUN = [0.62, 0.20, 0.14];
+  const ORANGE = [0.85, 0.42, 0.12];
+  box(-7.25, -5.6, 1.25, 3.0, -1.12, 1.12, WHITE);                 // accommodation, four decks
+  for (const y of [1.62, 2.05, 2.48]) {                            // rows of windows, fore and aft and along the sides
+    box(-7.29, -7.24, y, y + 0.09, -0.95, 0.95, DARK);
+    box(-5.61, -5.56, y, y + 0.09, -0.95, 0.95, DARK);
+    for (const s of [1, -1]) box(-7.0, -5.85, y, y + 0.09, s * 1.11, s * 1.15, DARK);
+  }
+  box(-6.75, -5.6, 3.0, 3.62, -0.95, 0.95, WHITE);                 // the wheelhouse
+  box(-5.62, -5.56, 3.28, 3.48, -0.90, 0.90, DARK);
+  box(-6.15, -5.6, 3.38, 3.62, -1.45, 1.45, WHITE);                // bridge wings
+  box(-7.05, -6.55, 3.0, 4.15, -0.27, 0.27, FUN);                  // funnel
+  box(-7.07, -6.53, 3.95, 4.18, -0.29, 0.29, DARK);
+  box(-6.3, -6.24, 3.62, 4.35, -0.03, 0.03, DARK);                 // radar mast
+  box(-6.42, -6.12, 4.12, 4.16, -0.30, 0.30, DARK);
+  for (const s of [1, -1]) box(-6.95, -6.35, 2.18, 2.42, s * 1.13, s * 1.36, ORANGE);   // lifeboats
+  box(6.3, 6.42, 1.6, 3.0, -0.06, 0.06, WHITE);
+  return new Float32Array(out);
+}
+
+// ---------- other lives passing while the calf waits ----------
+const CR_MAX = 64;
+const RAY_NX = 28, RAY_NZ = 22;
+const CR = { list: [], data: new Float32Array(CR_MAX * 12), n: 0 };
+function crAhead(yaw, dist, y) { return [cam.pos[0] + Math.cos(yaw) * dist, y, cam.pos[2] - Math.sin(yaw) * dist]; }
+function crPath(c, yaw, speed, life) { // a straight crossing in front of the calf, centred on c halfway through its life
+  const side = Math.random() < 0.5 ? 1 : -1, py = yaw + side * Math.PI / 2 + (Math.random() - 0.5) * 0.5;
+  const v = [Math.cos(py) * speed, 0, -Math.sin(py) * speed];
+  return { start: [c[0] - v[0] * life / 2, c[1], c[2] - v[2] * life / 2], v };
+}
+function spawnSchool(yaw, dist, y, count, life, speed, size) {
+  const { start, v } = crPath(crAhead(yaw, dist, y), yaw, speed, life);
+  for (let k = 0; k < count; k++) {
+    const r = Math.cbrt(Math.random()), a = Math.random() * TAU, e = (Math.random() - 0.5) * 2;
+    const off = [Math.cos(a) * r * 0.6, e * r * 0.22, Math.sin(a) * r * 0.6];
+    CR.list.push({ type: 0, start: [start[0] + off[0], start[1] + off[1], start[2] + off[2]], v, age: 0, life: life + (Math.random() - 0.5) * 2, size: size * (0.8 + 0.4 * Math.random()), ph: Math.random() * TAU, rate: 7 + Math.random() * 3, seed: Math.random(), dir: v, school: true });
+  }
+}
+function spawnJelly(yaw, dist, y, size, life) {
+  const v = [(Math.random() - 0.5) * 0.04, 0.012, (Math.random() - 0.5) * 0.04];
+  CR.list.push({ type: 1, start: crAhead(yaw, dist, y), v, age: 0, life, size, ph: Math.random() * TAU, rate: 1.3 + Math.random() * 0.4, seed: Math.random(), dir: [0, 1, 0] });
+}
+function spawnTurtle(yaw, dist, y, life) {
+  const { start, v } = crPath(crAhead(yaw, dist, y), yaw, 0.21, life);
+  CR.list.push({ type: 2, start, v, age: 0, life, size: 0.23, ph: 0, rate: 1.5, seed: Math.random(), dir: v });
+}
+// Eagle rays in a loose staggered line, flapping and gliding; one manta that curves in close and away.
+// Both fly with their pectoral fins: a wave runs out along each wing and back across it.
+function spawnEagles(yaw, dist, y, count, life) {
+  const speed = 0.20;
+  const { start, v } = crPath(crAhead(yaw, dist, y), yaw, speed, life);
+  const f = norm3(v), side = [-f[2], 0, f[0]];
+  for (let k = 0; k < count; k++) {
+    const back = k * 0.55 + Math.random() * 0.2;
+    const lat = (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 0.32 + (Math.random() - 0.5) * 0.2, up = (Math.random() - 0.5) * 0.45;
+    const s0 = [start[0] - f[0] * back + side[0] * lat, start[1] + up, start[2] - f[2] * back + side[2] * lat];
+    CR.list.push({ type: 3, start: s0, v, age: 0, life: life + back / speed, size: 0.17 + 0.04 * Math.random(), ph: k * 0.45 + Math.random() * 0.4, rate: 4.6 + Math.random() * 0.5, seed: Math.random(), dir: v, ray: true, amp: 1 });
+  }
+}
+function spawnManta(yaw, dist, y, life) {
+  const speed = 0.24;
+  const c = crAhead(yaw, dist, y);
+  // straight across the calf's view (no random slant), so it is seen broadside as it comes closest
+  const py = yaw + (Math.random() < 0.5 ? 1 : -1) * Math.PI / 2;
+  const v = [Math.cos(py) * speed, 0, -Math.sin(py) * speed];
+  const start = [c[0] - v[0] * life / 2, c[1], c[2] - v[2] * life / 2];
+  const toCam = norm3([cam.pos[0] - c[0], 0, cam.pos[2] - c[2]]);
+  CR.list.push({ type: 4, start, v, age: 0, life, size: 0.40, ph: 0, rate: 1.95, seed: Math.random(), dir: v, ray: true, amp: 1, bow: toCam, arc: 0.5 });
+}
+function crEvent(name) {
+  const y0 = M.yaw0;
+  if (name === 'schoolA') spawnSchool(y0 + 0.15, 4.6, -3.0, 24, 20, 0.30, 0.10);
+  else if (name === 'jelly') { spawnJelly(y0 + 0.5, 3.2, -1.5, 0.19, 30); spawnJelly(y0 + 0.78, 4.2, -2.1, 0.25, 30); }
+  else if (name === 'turtle') spawnTurtle(y0 + 0.9, 4.6, -0.65, 22);
+  else if (name === 'schoolB') spawnSchool(y0 - 0.25, 5.4, -3.8, 16, 18, 0.34, 0.11);
+  else if (name === 'schoolC') spawnSchool(y0 - 0.45, 6.0, -4.4, 12, 18, 0.36, 0.09);
+  else if (name === 'schoolD') spawnSchool(y0 + 0.55, 4.2, -2.6, 10, 16, 0.33, 0.10);
+  else if (name === 'jelly2') spawnJelly(y0 - 0.35, 3.6, -1.9, 0.22, 30);
+  else if (name === 'eagles') spawnEagles(y0 - 0.30, 4.0, -2.8, 7, 24);
+  else if (name === 'manta') spawnManta(y0 + 0.15, 2.1, -1.7, 22);
+  else if (name === 'jelly3') { spawnJelly(y0 + 0.2, 2.9, -1.3, 0.17, 26); spawnJelly(y0 - 0.15, 4.4, -2.4, 0.21, 26); }
+}
+function updateCreatures(dt) {
+  const L = CR.list;
+  for (let i = L.length - 1; i >= 0; i--) {
+    const c = L[i]; c.age += dt;
+    if (c.ray) {
+      // eagle rays beat, then glide with wings held out; the manta beats slowly, now and then easing off
+      const g = Math.sin(c.age * (c.type === 3 ? 0.45 : 0.22) + c.seed * 6.28);
+      const target = c.type === 3 ? 0.30 + 0.70 * sstep(-0.35, 0.35, g) : 0.80 + 0.20 * sstep(-0.5, 0.5, g);
+      c.amp += (target - c.amp) * Math.min(1, dt * 1.2);
+      c.ph += c.rate * dt * (0.55 + 0.45 * c.amp);
+    } else c.ph += c.rate * dt;
+    if (c.age > c.life) L.splice(i, 1);
+  }
+  const n = Math.min(L.length, CR_MAX), D = CR.data;
+  for (let i = 0; i < n; i++) {
+    const c = L[i], o = i * 12, t = c.age, w = c.seed * 6.28;
+    let x = c.start[0] + c.v[0] * t, y = c.start[1] + c.v[1] * t, z = c.start[2] + c.v[2] * t;
+    if (c.school) { x += Math.sin(t * 0.7 + w) * 0.05; y += Math.sin(t * 0.9 + w * 1.3) * 0.04 + Math.sin(t * 0.25) * 0.15; z += Math.cos(t * 0.6 + w) * 0.05; }
+    if (c.type === 1) { x += Math.sin(t * 0.2 + w) * 0.06; y += Math.max(0, Math.sin(c.ph)) * 0.0; }
+    if (c.type === 2) y += Math.sin(c.ph) * 0.02;
+    let dir = c.dir, bank = 0;
+    if (c.type === 3) { // a slow rise and fall, with the body pitched along it
+      y += Math.sin(t * 0.3 + w) * 0.10;
+      dir = [c.v[0], Math.cos(t * 0.3 + w) * 0.03, c.v[2]];
+      bank = Math.sin(t * 0.21 + w) * 0.10;
+    }
+    if (c.type === 4) { // curves in toward the calf, rising a little, then away; banking into the turn
+      const uu = t / c.life, s = Math.sin(Math.PI * uu), k = Math.PI / c.life;
+      x += c.bow[0] * c.arc * s; z += c.bow[2] * c.arc * s; y += 0.30 * s;
+      const dc = c.arc * Math.cos(Math.PI * uu) * k;
+      dir = [c.v[0] + c.bow[0] * dc, 0.30 * Math.cos(Math.PI * uu) * k, c.v[2] + c.bow[2] * dc];
+      // as it comes closest it tips its back toward the calf, the way a curious manta turns to look
+      const f = norm3(dir), r = norm3(cross3(f, [0, 1, 0]));
+      const side = (cam.pos[0] - x) * r[0] + (cam.pos[2] - z) * r[2];
+      bank = -Math.sign(side) * 0.6 * s;
+    }
+    c.pos = [x, y, z];
+    D[o] = x; D[o + 1] = y; D[o + 2] = z; D[o + 3] = c.size;
+    const dl = Math.hypot(dir[0], dir[1], dir[2]) || 1;
+    D[o + 4] = dir[0] / dl; D[o + 5] = dir[1] / dl; D[o + 6] = dir[2] / dl; D[o + 7] = c.type;
+    D[o + 8] = c.ph; D[o + 9] = sstep(0, 2.5, t) * sstep(c.life, c.life - 2.5, t);
+    D[o + 10] = c.ray ? c.amp : c.seed; D[o + 11] = bank;
+  }
+  CR.n = n;
+}
+
+// ---------- ripples where her body meets the surface ----------
+// While any part of her skin crosses the waterline, that place keeps sending out rings. Each ring is a short
+// train of crests that spreads at a steady speed, widens as it travels (the longer waves outrun the short ones),
+// and fades with distance and time.
+const RIP_MAX = 48, RIP_LIFE = 6.5;
+const RIP = { data: new Float32Array(RIP_MAX * 4), head: 0, tick: 0, samples: null };
+function buildRippleSamples() {
+  const V = MESH.verts, U = new Uint32Array(V.buffer), out = [];
+  const n = V.length / 12, step = Math.max(1, Math.floor(n / 900));
+  for (let v = 0; v < n; v += step) { const o = v * 12; out.push([U[o + 11], V[o + 6], V[o + 7], V[o + 8]]); }
+  RIP.samples = out;
+}
+function resetRipples() { RIP.data.fill(0); for (let k = 0; k < RIP_MAX; k++) RIP.data[k * 4 + 2] = RIP_LIFE + 1; RIP.head = 0; }
+const _rp = [0, 0, 0];
+function updateRipples(dt) {
+  const D = RIP.data;
+  for (let k = 0; k < RIP_MAX; k++) D[k * 4 + 2] += dt;
+  if (!RIP.samples || !motherVisible() || !SIM) return;
+  RIP.tick -= dt;
+  if (RIP.tick > 0) return;
+  RIP.tick = 0.14;
+  const line = [];
+  for (const s of RIP.samples) { latticePoint(s, _rp); if (Math.abs(_rp[1] - SURF) < 0.03) line.push([_rp[0], _rp[2]]); }
+  if (!line.length) return;
+  // a bigger crossing sends out more rings, and a moving body stronger ones
+  const sp = Math.min(1, Math.abs(S.speed) * 1.6 + Math.abs(S.pitchRate) * 0.8);
+  const emit = Math.min(3, 1 + Math.floor(line.length / 25));
+  for (let e = 0; e < emit; e++) {
+    const p = line[Math.floor(Math.random() * line.length)], k = RIP.head;
+    D[k * 4] = p[0]; D[k * 4 + 1] = p[1]; D[k * 4 + 2] = 0; D[k * 4 + 3] = 0.45 + 0.55 * sp;
+    RIP.head = (k + 1) % RIP_MAX;
+  }
+}
+
+// ---------- GPU ----------
+let G = null, MESH = null, HINGE_B = null;
+async function initGPU() {
+  if (!navigator.gpu) throw new Error('nogpu');
+  // some devices answer only a plain request, so ask again without the preference before giving up
+  let adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
+  if (!adapter) adapter = await navigator.gpu.requestAdapter();
+  if (!adapter) throw new Error('noadapter');
+  const device = await adapter.requestDevice();
+  const ctx = canvas.getContext('webgpu');
+  const format = navigator.gpu.getPreferredCanvasFormat();
+  ctx.configure({ device, format, alphaMode: 'opaque', usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC });
+  device.pushErrorScope('validation');
+  const module = device.createShaderModule({ code: buildWGSL() });
+  const info = await module.getCompilationInfo();
+  const errs = info.messages.filter(m => m.type === 'error');
+  if (errs.length) throw new Error('Shader: ' + errs.map(m => `${m.lineNum}:${m.linePos} ${m.message}`).join('\n'));
+  const mk = (data, usage) => { const b = device.createBuffer({ size: Math.max(16, (data.byteLength + 3) & ~3), usage: usage | GPUBufferUsage.COPY_DST }); device.queue.writeBuffer(b, 0, data); return b; };
+  const ubuf = device.createBuffer({ size: 336, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+  const cellBuf = mk(new Uint32Array(LAT.cells), GPUBufferUsage.STORAGE);
+  const posBuf = device.createBuffer({ size: LAT.n * 16, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+  const leanBuf = device.createBuffer({ size: LAT.n * 16, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+  const vbuf = mk(MESH.verts, GPUBufferUsage.VERTEX), ibuf = mk(MESH.idx, GPUBufferUsage.INDEX);
+  const V = GPUShaderStage.VERTEX, Fr = GPUShaderStage.FRAGMENT;
+  const bgl = device.createBindGroupLayout({ entries: [
+    { binding: 0, visibility: V | Fr, buffer: { type: 'uniform' } },
+    { binding: 1, visibility: V, buffer: { type: 'read-only-storage' } },
+    { binding: 2, visibility: V, buffer: { type: 'read-only-storage' } },
+    { binding: 3, visibility: V, buffer: { type: 'read-only-storage' } },
+    { binding: 4, visibility: V, buffer: { type: 'read-only-storage' } },
+    { binding: 5, visibility: Fr, buffer: { type: 'read-only-storage' } },
+  ] });
+  const ripBuf = device.createBuffer({ size: RIP_MAX * 16, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+  const creBuf = device.createBuffer({ size: CR_MAX * 48, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+  const bind = device.createBindGroup({ layout: bgl, entries: [
+    { binding: 0, resource: { buffer: ubuf } }, { binding: 1, resource: { buffer: cellBuf } },
+    { binding: 2, resource: { buffer: posBuf } }, { binding: 3, resource: { buffer: leanBuf } },
+    { binding: 4, resource: { buffer: creBuf } },
+    { binding: 5, resource: { buffer: ripBuf } },
+  ] });
+  const layout = device.createPipelineLayout({ bindGroupLayouts: [bgl] });
+  const whaleVB = [{ arrayStride: 48, attributes: [
+    { shaderLocation: 0, offset: 0, format: 'float32x3' }, { shaderLocation: 1, offset: 12, format: 'float32x3' },
+    { shaderLocation: 2, offset: 24, format: 'float32x3' }, { shaderLocation: 3, offset: 36, format: 'float32x2' },
+    { shaderLocation: 4, offset: 44, format: 'uint32' }] }];
+  const depth = { format: 'depth24plus', depthWriteEnabled: true, depthCompare: 'less' };
+  const blend = { color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' }, alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' } };
+  const pipe = (vs, fs, buffers, extra = {}) => device.createRenderPipeline({
+    layout, vertex: { module, entryPoint: vs, buffers },
+    fragment: { module, entryPoint: fs, targets: [extra.blend ? { format, blend } : { format }] },
+    primitive: { topology: 'triangle-list', cullMode: extra.cull || 'back' },
+    depthStencil: extra.depth || depth,
+    multisample: { count: 4, alphaToCoverageEnabled: !!extra.a2c },
+  });
+  const pipes = {
+    bg: pipe('vsBg', 'fsBg', [], { cull: 'none', depth: { format: 'depth24plus', depthWriteEnabled: false, depthCompare: 'always' } }),
+    base: pipe('vsBase', 'fsBase', whaleVB),
+    shell: pipe('vsShell', 'fsShell', whaleVB, { a2c: true }),
+    fiber: pipe('vsFiber', 'fsFiber', [], { cull: 'none', a2c: true }),
+    cre: pipe('vsCre', 'fsCre', [], { cull: 'none', blend: true, depth: { format: 'depth24plus', depthWriteEnabled: false, depthCompare: 'less' } }),
+    ray: pipe('vsRay', 'fsRay', [], { cull: 'none', blend: true, depth: { format: 'depth24plus', depthWriteEnabled: false, depthCompare: 'less' } }),
+    ship: pipe('vsShip', 'fsShip', [{ arrayStride: 36, attributes: [
+      { shaderLocation: 0, offset: 0, format: 'float32x3' }, { shaderLocation: 1, offset: 12, format: 'float32x3' }, { shaderLocation: 2, offset: 24, format: 'float32x3' }] }], { cull: 'none' }),
+    surf: pipe('vsSurf', 'fsSurf', [], { cull: 'none', blend: true, depth: { format: 'depth24plus', depthWriteEnabled: false, depthCompare: 'less' } }),
+  };
+  const err = await device.popErrorScope();
+  if (err) throw new Error(err.message);
+  device.lost.then(i => { if (i.reason !== 'destroyed') { G = null; showNoGPU('그래픽 장치와의 연결이 끊겼습니다. 페이지를 새로 고쳐 다시 시작해 주세요.'); } });
+  const shipData = buildShipMesh(), shipBuf = mk(shipData, GPUBufferUsage.VERTEX);
+  G = { device, ctx, format, ubuf, creBuf, ripBuf, shipBuf, shipN: shipData.length / 9, posBuf, leanBuf, vbuf, ibuf, bind, pipes, nIdx: MESH.idx.length, msaa: null, depthTex: null, w: 0, h: 0, u: new Float32Array(84) };
+}
+function ensureTargets() {
+  const dpr = Math.min(window.devicePixelRatio || 1, QUAL[qi].dpr);
+  const w = Math.max(1, Math.round(canvas.clientWidth * dpr)), h = Math.max(1, Math.round(canvas.clientHeight * dpr));
+  cam.aspect = w / h;
+  if (w === G.w && h === G.h) return;
+  canvas.width = w; canvas.height = h; G.w = w; G.h = h;
+  if (G.msaa) { G.msaa.destroy(); G.depthTex.destroy(); }
+  G.msaa = G.device.createTexture({ size: [w, h], sampleCount: 4, format: G.format, usage: GPUTextureUsage.RENDER_ATTACHMENT });
+  G.depthTex = G.device.createTexture({ size: [w, h], sampleCount: 4, format: 'depth24plus', usage: GPUTextureUsage.RENDER_ATTACHMENT });
+}
+const _h = [0, 0, 0], _a = [0, 0, 0], _b = [0, 0, 0];
+function latticePoint(b, out) {
+  const C = LAT.cells, x = SIM.x, base = b[0] * 8;
+  out[0] = out[1] = out[2] = 0;
+  for (let i = 0; i < 8; i++) {
+    const w = ((i & 1) ? b[1] : 1 - b[1]) * (((i >> 1) & 1) ? b[2] : 1 - b[2]) * (((i >> 2) & 1) ? b[3] : 1 - b[3]);
+    const p = C[base + i] * 3;
+    out[0] += x[p] * w; out[1] += x[p + 1] * w; out[2] += x[p + 2] * w;
+  }
+  return out;
+}
+function writeUniforms(vp, realT) {
+  const U = G.u;
+  U.set(vp, 0);
+  U[16] = cam.eye[0]; U[17] = cam.eye[1]; U[18] = cam.eye[2]; U[19] = S.time;
+  U.set(FABRIC.top, 20); U.set(FABRIC.top2, 24); U.set(FABRIC.belly, 28); U.set(FABRIC.thread, 32);
+  latticePoint(HINGE_B[0], _h); latticePoint(HINGE_B[1], _a); latticePoint(HINGE_B[2], _b);
+  const ax = norm3([_a[0] - _b[0], _a[1] - _b[1], _a[2] - _b[2]]);
+  U[36] = _h[0]; U[37] = _h[1]; U[38] = _h[2]; U[39] = Math.max(0, S.jaw);
+  U[40] = ax[0]; U[41] = ax[1]; U[42] = ax[2]; U[43] = 0;
+  U[44] = CFG.pileMM / 300; U[45] = QUAL[qi].shells; U[46] = Math.max(150, 265 - CFG.pileMM * 15); U[47] = N_FIB;
+  U[48] = cam.r[0]; U[49] = cam.r[1]; U[50] = cam.r[2]; U[51] = cam.tanH;
+  U[52] = cam.u[0]; U[53] = cam.u[1]; U[54] = cam.u[2]; U[55] = cam.aspect;
+  U[56] = cam.f[0]; U[57] = cam.f[1]; U[58] = cam.f[2]; U[59] = realT % 3600;
+  U[60] = SURF; U[61] = RING1[0]; U[62] = RING1[1]; U[63] = RING1[2];
+  U[64] = RING2[0]; U[65] = RING2[1]; U[66] = RING2[2]; U[67] = 2 * cam.tanH / Math.max(1, G.h);
+  U[68] = SUN[0]; U[69] = SUN[1]; U[70] = SUN[2]; U[71] = 0;
+  const cl = toLocal(cam.eye); U[72] = cl[0]; U[73] = cl[1]; U[74] = cl[2]; U[75] = blinkAmt();
+  U[76] = SHIP.pos[0]; U[77] = SHIP.pos[2]; U[78] = SHIP.yaw; U[79] = SHIP.on ? 1 : 0;
+  U[80] = SHIP.shade; U[81] = SHIP.t; U[82] = 0; U[83] = 0;
+  G.device.queue.writeBuffer(G.ubuf, 0, U);
+}
+function motherVisible() { return !M.hidden && S.pos[1] > -17.5; }
+function render(realT) {
+  ensureTargets();
+  writeUniforms(viewProj(), realT);
+  const showM = motherVisible();
+  if (showM) { G.device.queue.writeBuffer(G.posBuf, 0, SIM.posOut); G.device.queue.writeBuffer(G.leanBuf, 0, SIM.leanOut); }
+  const enc = G.device.createCommandEncoder();
+  const tex = G.ctx.getCurrentTexture();
+  const pass = enc.beginRenderPass({
+    colorAttachments: [{ view: G.msaa.createView(), resolveTarget: tex.createView(), clearValue: { r: 0.02, g: 0.04, b: 0.08, a: 1 }, loadOp: 'clear', storeOp: 'discard' }],
+    depthStencilAttachment: { view: G.depthTex.createView(), depthClearValue: 1, depthLoadOp: 'clear', depthStoreOp: 'discard' },
+  });
+  pass.setBindGroup(0, G.bind);
+  pass.setPipeline(G.pipes.bg); pass.draw(3);
+  if (showM) {
+    pass.setVertexBuffer(0, G.vbuf); pass.setIndexBuffer(G.ibuf, 'uint32');
+    pass.setPipeline(G.pipes.base); pass.drawIndexed(G.nIdx);
+    pass.setPipeline(G.pipes.shell); pass.drawIndexed(G.nIdx, QUAL[qi].shells);
+  }
+  pass.setPipeline(G.pipes.fiber); pass.draw(FIB_SEG * 6, N_FIB);
+  // the ship stands above the water only; from below, the surface shader draws its hull and wake
+  if (SHIP.on && cam.eye[1] > SURF) { pass.setVertexBuffer(0, G.shipBuf); pass.setPipeline(G.pipes.ship); pass.draw(G.shipN); }
+  if (CR.n) {
+    G.device.queue.writeBuffer(G.creBuf, 0, CR.data, 0, CR.n * 12);
+    pass.setPipeline(G.pipes.cre); pass.draw(6, CR.n);
+    if (CR.list.some(c => c.ray)) { pass.setPipeline(G.pipes.ray); pass.draw(RAY_NX * RAY_NZ * 6, CR.n); }
+  }
+  G.device.queue.writeBuffer(G.ripBuf, 0, RIP.data);
+  pass.setPipeline(G.pipes.surf); pass.draw(6);
+  pass.end();
+  G.device.queue.submit([enc.finish()]);
+  return tex;
+}
+
+// ---------- sound ----------
+const AU = { ctx: null, on: true };
+function makePanner(ac) {
+  const p = ac.createPanner();
+  p.panningModel = 'HRTF'; p.distanceModel = 'linear'; p.refDistance = 1; p.maxDistance = 10000; p.rolloffFactor = 0;
+  return p;
+}
+function initAudio() {
+  if (AU.ctx) { if (AU.ctx.state === 'suspended') AU.ctx.resume(); return AU.ctx; }
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return null;
+    const ac = new Ctx(); AU.ctx = ac;
+    const sr = ac.sampleRate;
+    AU.click = ac.createBuffer(1, Math.floor(sr * 0.02), sr);
+    { const d = AU.click.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
+    AU.white = ac.createBuffer(1, Math.floor(sr * 2), sr);
+    { const d = AU.white.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
+    const brown = ac.createBuffer(1, Math.floor(sr * 6), sr);
+    { const d = brown.getChannelData(0); let l = 0; for (let i = 0; i < d.length; i++) { l = (l + 0.02 * (Math.random() * 2 - 1)) / 1.02; d[i] = l * 3.5; }
+      const fade = Math.floor(sr * 0.5); for (let i = 0; i < fade; i++) { const w = i / fade; d[i] = d[i] * w + d[d.length - fade + i] * (1 - w); } }
+    const comp = ac.createDynamicsCompressor(); comp.threshold.value = -18; comp.ratio.value = 4;
+    AU.comp = comp;
+    // short of breath, the world goes dull: everything but the heart passes through this filter
+    AU.muf = ac.createBiquadFilter(); AU.muf.type = 'lowpass'; AU.muf.frequency.value = 18000; AU.muf.Q.value = 0.5;
+    AU.master = ac.createGain(); AU.master.gain.value = 0.9; AU.master.connect(AU.muf); AU.muf.connect(comp); comp.connect(ac.destination);
+    AU.heart = ac.createGain(); AU.heart.gain.value = 0; AU.heart.connect(comp);
+    AU.wet = ac.createGain(); AU.wet.connect(AU.master);         // what the calf hears under water
+    AU.air = ac.createGain(); AU.air.gain.value = 0; AU.air.connect(AU.master); // what it hears with its head up
+    const irLen = Math.floor(sr * 2.2), ir = ac.createBuffer(2, irLen, sr);
+    for (let ch = 0; ch < 2; ch++) { const b = ir.getChannelData(ch); for (let i = 0; i < irLen; i++) { const t = i / sr; b[i] = (Math.random() * 2 - 1) * Math.exp(-t * 2.4) * (1 - Math.exp(-t * 120)); } }
+    AU.verb = ac.createConvolver(); AU.verb.buffer = ir;
+    const vlp = ac.createBiquadFilter(); vlp.type = 'lowpass'; vlp.frequency.value = 2200;
+    const vg = ac.createGain(); vg.gain.value = 0.38;
+    AU.verb.connect(vlp); vlp.connect(vg); vg.connect(AU.wet);
+    // the mother's voice: filtered and dimmed by distance, placed in space
+    AU.mIn = ac.createGain();
+    AU.mLP = ac.createBiquadFilter(); AU.mLP.type = 'lowpass'; AU.mLP.frequency.value = 6000;
+    AU.mG = ac.createGain();
+    AU.mPan = makePanner(ac);
+    AU.mIn.connect(AU.mLP); AU.mLP.connect(AU.mG); AU.mG.connect(AU.mPan); AU.mPan.connect(AU.wet); AU.mG.connect(AU.verb);
+    // from far below, the sound arrives late and returns again and again off the layers of the sea
+    AU.farG = ac.createGain(); AU.farG.gain.value = 0;
+    const dl = ac.createDelay(1.0); dl.delayTime.value = 0.31;
+    const fb = ac.createGain(); fb.gain.value = 0.26;
+    const elp = ac.createBiquadFilter(); elp.type = 'lowpass'; elp.frequency.value = 1100;
+    const eout = ac.createGain(); eout.gain.value = 0.85;
+    AU.mLP.connect(AU.farG); AU.farG.connect(dl); dl.connect(elp); elp.connect(fb); fb.connect(dl); elp.connect(eout); eout.connect(AU.wet); AU.farG.connect(AU.verb);
+    // the calf's own voice, close and centred
+    AU.cIn = ac.createGain(); AU.cIn.gain.value = 0.55; AU.cIn.connect(AU.wet); AU.cIn.connect(AU.verb);
+    // the mother's breath happens in the air, so it is muffled while the calf is under
+    AU.bPan = makePanner(ac);
+    AU.bLP = ac.createBiquadFilter(); AU.bLP.type = 'lowpass'; AU.bLP.frequency.value = 650;
+    AU.bG = ac.createGain(); AU.bG.gain.value = 0.9;
+    AU.bPan.connect(AU.bLP); AU.bLP.connect(AU.bG); AU.bG.connect(AU.master);
+    // the sea's own hum, and a little wind above
+    const amb = ac.createBufferSource(); amb.buffer = brown; amb.loop = true;
+    const alp = ac.createBiquadFilter(); alp.type = 'lowpass'; alp.frequency.value = 380;
+    AU.ambG = ac.createGain(); AU.ambG.gain.value = 0.2;
+    amb.connect(alp); alp.connect(AU.ambG); AU.ambG.connect(AU.wet); amb.start();
+    const wind = ac.createBufferSource(); wind.buffer = AU.white; wind.loop = true;
+    const wbp = ac.createBiquadFilter(); wbp.type = 'bandpass'; wbp.frequency.value = 1100; wbp.Q.value = 0.4;
+    const wg = ac.createGain(); wg.gain.value = 0.035;
+    wind.connect(wbp); wbp.connect(wg); wg.connect(AU.air); wind.start();
+    initShipSound();
+    if (ac.state === 'suspended') ac.resume();
+    return ac;
+  } catch (e) { console.warn(e); AU.ctx = null; return null; }
+}
+// one click: a few decaying pulses spaced like the echoes inside a sperm whale's nose
+function clickAt(t, amp, dest, hi) {
+  const ac = AU.ctx, ipi = 0.0042;
+  for (let p = 0; p < 4; p++) {
+    const t0 = t + p * ipi, a = amp * Math.pow(0.52, p);
+    const src = ac.createBufferSource(); src.buffer = AU.click;
+    const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 2000 + hi + p * 450 + Math.random() * 300; bp.Q.value = 1.1;
+    const g = ac.createGain();
+    g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(a, t0 + 0.0004); g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.0038);
+    src.connect(bp); bp.connect(g); g.connect(dest);
+    src.start(t0); src.stop(t0 + 0.012);
+  }
+  const o = ac.createOscillator(); o.type = 'sine';
+  o.frequency.setValueAtTime(1300 + hi * 0.4, t); o.frequency.exponentialRampToValueAtTime(360, t + 0.008);
+  const og = ac.createGain();
+  og.gain.setValueAtTime(0.0001, t); og.gain.exponentialRampToValueAtTime(amp * 0.45, t + 0.0006); og.gain.exponentialRampToValueAtTime(0.0001, t + 0.012);
+  o.connect(og); og.connect(dest); o.start(t); o.stop(t + 0.02);
+}
+function noiseBurst(dest, t, dur, f0, f1, q, peak, attack) {
+  const ac = AU.ctx;
+  const src = ac.createBufferSource(); src.buffer = AU.white;
+  const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = q;
+  bp.frequency.setValueAtTime(f0, t); bp.frequency.exponentialRampToValueAtTime(f1, t + dur);
+  const g = ac.createGain();
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + attack); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  src.connect(bp); bp.connect(g); g.connect(dest);
+  src.start(t, Math.random()); src.stop(t + dur + 0.05);
+}
+const CODAS = [
+  { name: '1+1+3', t: [0, 0.36, 0.72, 0.86, 1.0] },
+  { name: '5R', t: [0, 0.17, 0.34, 0.51, 0.68] },
+  { name: '4R', t: [0, 0.24, 0.48, 0.72] },
+  { name: '1+3', t: [0, 0.44, 0.58, 0.72] },
+];
+let codaIdx = 0;
+const CODA_Q = [];
+function motherCoda(given, tempo) {
+  const c = given || CODAS[codaIdx++ % CODAS.length], k = tempo || 1;
+  const now = performance.now() / 1000, base = AU.ctx ? AU.ctx.currentTime + 0.06 : 0;
+  c.t.forEach(tt => {
+    const jt = tt * k * (1 + (Math.random() - 0.5) * 0.04);
+    if (AU.ctx) clickAt(base + jt, 0.66, AU.mIn, 0);
+    CODA_Q.push(now + 0.06 + jt);
+  });
+  CODA_Q.sort((a, b) => a - b);
+  S.codaT = c.t[c.t.length - 1] * k + 0.7;
+  TAP.coda = c;
+  TAP.listenUntil = now + c.t[c.t.length - 1] * k + 7;
+  rhythmShow(c, k, now + 0.06);
+}
+function calfCoda() { // a young whale's coda: higher, softer, and not yet steady in its timing
+  if (!AU.ctx) return;
+  const base = AU.ctx.currentTime + 0.04, c = [0, 0.4, 0.8, 0.95, 1.1];
+  c.forEach(tt => clickAt(base + tt * (1 + (Math.random() - 0.5) * 0.12), 0.38, AU.cIn, 900));
+}
+// one heartbeat: a low "lub" and a softer "dub"
+function heartbeat(t, amp) {
+  const ac = AU.ctx;
+  for (const [dt, f, a, len] of [[0, 58, 1, 0.13], [0.24, 50, 0.6, 0.16]]) {
+    const o = ac.createOscillator(); o.type = 'sine';
+    o.frequency.setValueAtTime(f * 1.6, t + dt); o.frequency.exponentialRampToValueAtTime(f, t + dt + 0.05);
+    const g = ac.createGain();
+    g.gain.setValueAtTime(0.0001, t + dt); g.gain.exponentialRampToValueAtTime(amp * a, t + dt + 0.012); g.gain.exponentialRampToValueAtTime(0.0001, t + dt + len);
+    o.connect(g); g.connect(AU.heart); o.start(t + dt); o.stop(t + dt + len + 0.05);
+  }
+}
+const HB = { next: 0, pulse: 0 };
+function updateHeart(dt) {
+  HB.pulse = Math.max(0, HB.pulse - dt * 3.5);
+  const p = BR.p;
+  if (p < 0.22) { HB.next = 0; return; }
+  HB.next -= dt;
+  if (HB.next <= 0) {
+    const bpm = 58 + 52 * p;
+    HB.next = 60 / bpm;
+    HB.pulse = 1;
+    if (AU.ctx && AU.on) heartbeat(AU.ctx.currentTime + 0.01, 0.9 * sstep(0.22, 1, p));
+  }
+}
+function echoClick(amp) { if (AU.ctx) clickAt(AU.ctx.currentTime + 0.02, amp, AU.mIn, -200); }
+function motherBlowSound(p) {
+  if (!AU.ctx) return;
+  setPos(AU.bPan, p);
+  const t = AU.ctx.currentTime + 0.02;
+  noiseBurst(AU.bPan, t, 1.25, 900, 360, 0.7, 0.55, 0.05);
+  noiseBurst(AU.bPan, t, 0.9, 230, 150, 1.2, 0.4, 0.03);
+  noiseBurst(AU.bPan, t + 1.35, 0.85, 600, 1300, 0.8, 0.2, 0.4);
+}
+function calfBreathSound() {
+  if (!AU.ctx) return;
+  const t = AU.ctx.currentTime + 0.01;
+  noiseBurst(AU.air, t, 0.5, 1500, 700, 0.8, 0.4, 0.02);
+  noiseBurst(AU.air, t + 0.62, 0.75, 900, 1900, 0.9, 0.2, 0.36);
+}
+function setPos(node, p) {
+  if (node.positionX) { const t = AU.ctx.currentTime; node.positionX.setTargetAtTime(p[0], t, 0.05); node.positionY.setTargetAtTime(p[1], t, 0.05); node.positionZ.setTargetAtTime(p[2], t, 0.05); }
+  else node.setPosition(p[0], p[1], p[2]);
+}
+function updateAudio() {
+  const ac = AU.ctx; if (!ac) return;
+  const t = ac.currentTime, L = ac.listener, e = cam.eye, f = cam.f, u = cam.u;
+  if (L.positionX) {
+    L.positionX.setTargetAtTime(e[0], t, 0.05); L.positionY.setTargetAtTime(e[1], t, 0.05); L.positionZ.setTargetAtTime(e[2], t, 0.05);
+    L.forwardX.setTargetAtTime(f[0], t, 0.05); L.forwardY.setTargetAtTime(f[1], t, 0.05); L.forwardZ.setTargetAtTime(f[2], t, 0.05);
+    L.upX.setTargetAtTime(u[0], t, 0.05); L.upY.setTargetAtTime(u[1], t, 0.05); L.upZ.setTargetAtTime(u[2], t, 0.05);
+  } else { L.setPosition(e[0], e[1], e[2]); L.setOrientation(f[0], f[1], f[2], u[0], u[1], u[2]); }
+  const head = M.hidden ? S.pos : mPoint(0.6, 0, 0);
+  setPos(AU.mPan, head);
+  const d = Math.hypot(head[0] - e[0], head[1] - e[1], head[2] - e[2]);
+  AU.mLP.frequency.setTargetAtTime(350 + 7000 / (1 + d / 2.5), t, 0.1);
+  AU.farG.gain.setTargetAtTime(0.6 * sstep(3, 12, d), t, 0.2);
+  const above = clamp((e[1] - SURF) / 0.05, 0, 1);
+  AU.wet.gain.setTargetAtTime(1 - 0.72 * above, t, 0.08);
+  AU.air.gain.setTargetAtTime(above, t, 0.08);
+  AU.bLP.frequency.setTargetAtTime(above > 0.5 ? 3200 : 650, t, 0.08);
+  AU.ambG.gain.setTargetAtTime(0.17 + 0.05 * Math.sin(t * 0.07), t, 0.5);
+  AU.master.gain.setTargetAtTime(AU.on ? 0.9 : 0, t, 0.15);
+  // breath: the sea turns dull and the heart comes forward; a breath brings the world back at once
+  const p = BR.p;
+  AU.muf.frequency.setTargetAtTime(600 + 17000 * Math.pow(1 - p, 2.4), t, 0.15);
+  AU.heart.gain.setTargetAtTime(AU.on ? 1 : 0, t, 0.1);
+  // a passing ship: its noise rises, and the mother's voice drowns in it
+  const sl = SHIP.loud;
+  if (AU.ship) {
+    setPos(AU.shipPan, [SHIP.pos[0], SURF - 0.2, SHIP.pos[2]]);
+    AU.ship.gain.setTargetAtTime(AU.on ? 1.5 * sl : 0, t, 0.3);
+  }
+  AU.mG.gain.setTargetAtTime((1 / (1 + Math.pow(d / 4.5, 1.6))) * (1 - 0.88 * sl), t, 0.15);
+}
+
+// ---------- the rhythm strip ----------
+const RH = { el: null, top: null, bot: null, t0: 0, dur: 1, tap0: 0, fadeT: 0 };
+function rhythmInit() { RH.el = $('#rhythm'); RH.top = $('#rhTop'); RH.bot = $('#rhBot'); }
+function rhythmShow(c, k, startAt) {
+  if (!RH.el) return;
+  RH.top.innerHTML = ''; RH.bot.innerHTML = '';
+  const P = c.t[c.t.length - 1];
+  RH.dur = P * k;
+  c.t.forEach(tt => {
+    const d = document.createElement('i'); d.style.left = (tt / P * 100) + '%';
+    RH.top.appendChild(d);
+    setTimeout(() => d.classList.add('lit'), Math.max(0, (startAt + tt * k - performance.now() / 1000) * 1000));
+  });
+  RH.el.classList.add('show'); RH.fadeT = RH.dur + 9;
+}
+function rhythmTap(now) {
+  if (!RH.el) return;
+  if (TAP.list.length === 1) { RH.bot.innerHTML = ''; RH.tap0 = now; }
+  const d = document.createElement('i');
+  d.style.left = Math.min(100, (now - RH.tap0) / Math.max(RH.dur, 0.6) * 100) + '%';
+  RH.bot.appendChild(d);
+  RH.el.classList.add('show'); RH.fadeT = Math.max(RH.fadeT, 4);
+}
+function rhythmResult(taps, ok) {
+  if (!RH.el) return;
+  const T = taps[taps.length - 1] - taps[0] || 1;
+  [...RH.bot.children].forEach((d, i) => { d.style.left = ((taps[i] - taps[0]) / T * 100) + '%'; });
+  RH.el.classList.toggle('ok', ok);
+  RH.fadeT = 4;
+}
+function rhythmFade() { RH.fadeT = Math.min(RH.fadeT, 1.5); }
+
+// ---------- captions + controls ----------
+const capEl = $('#cap');
+const vigEl = $('#vig');
+let capT = 0, capsOn = true;
+const CAPQ = [];
+// captions wait their turn: each stays at least a few seconds before the next takes its place
+function showCap(text, now) {
+  if (now || capT < 3.0) { capEl.textContent = text; capEl.classList.add('show'); capT = 6.5; }
+  else CAPQ.push(text);
+}
+// a coda is made by the phonic lips inside the head and leaves through it as sound: nothing visible moves
+function codaPulse() {}
+function setPressed(id, v) { $(id).setAttribute('aria-pressed', String(v)); }
+let callOn = 0;
+$('#bBreath').addEventListener('click', () => { initAudio(); breathe(); });
+$('#bCall').addEventListener('pointerdown', e => { e.preventDefault(); tapCoda(); });
+$('#bCall').addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && !e.repeat) { e.preventDefault(); e.stopPropagation(); tapCoda(); } });
+document.addEventListener('fullscreenchange', () => setPressed('#bFull', !!document.fullscreenElement));
+$('#bCap').addEventListener('click', () => { capsOn = !capsOn; capEl.hidden = !capsOn; setPressed('#bCap', capsOn); });
+$('#bSound').addEventListener('click', () => { AU.on = !AU.on; if (AU.on) initAudio(); setPressed('#bSound', AU.on); });
+function toggleFull() {
+  try {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => {});
+  } catch (e) {}
+}
+$('#bFull').addEventListener('click', toggleFull);
+if (!document.documentElement.requestFullscreen) $('#bFull').hidden = true;
+window.addEventListener('keydown', e => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const k = e.key;
+  wake();
+  if (k === ' ' && !e.target.closest('button')) { e.preventDefault(); initAudio(); breathe(); }
+  else if ((k === 'c' || k === 'C') && !e.repeat) tapCoda();
+  else if (k === 'f' || k === 'F') toggleFull();
+  else if (k === 'ArrowLeft') { cam.oy += 0.12; cam.idle = 0; }
+  else if (k === 'ArrowRight') { cam.oy -= 0.12; cam.idle = 0; }
+  else if (k === 'ArrowUp') { cam.op = clamp(cam.op + 0.1, -1.3, 1.3); cam.idle = 0; }
+  else if (k === 'ArrowDown') { cam.op = clamp(cam.op - 0.1, -1.3, 1.3); cam.idle = 0; }
+});
+// looking around: drag anywhere on the water
+let drag = null;
+canvas.addEventListener('pointerdown', e => { drag = { x: e.clientX, y: e.clientY, id: e.pointerId }; canvas.setPointerCapture(e.pointerId); canvas.classList.add('dragging'); });
+canvas.addEventListener('pointermove', e => {
+  if (!drag || e.pointerId !== drag.id) return;
+  const s = 1.6 / Math.max(300, canvas.clientHeight);
+  cam.oy += (e.clientX - drag.x) * s; cam.op = clamp(cam.op + (e.clientY - drag.y) * s, -1.3, 1.3);
+  drag.x = e.clientX; drag.y = e.clientY; cam.idle = 0;
+});
+const endDrag = () => { drag = null; canvas.classList.remove('dragging'); };
+canvas.addEventListener('pointerup', endDrag);
+canvas.addEventListener('pointercancel', endDrag);
+// the controls step back when nobody touches them, as in a gallery
+let idleUI = 0;
+function wake() { idleUI = 0; document.body.classList.remove('quiet'); }
+['pointermove', 'pointerdown', 'touchstart'].forEach(ev => window.addEventListener(ev, wake, { passive: true }));
+
+function showNoGPU(msg) {
+  const el = $('#nogpu'); el.hidden = false;
+  el.textContent = msg || '이 작품은 WebGPU가 켜진 최신 Chrome, Edge 또는 Safari에서 보입니다. 지금 브라우저에서는 장면을 그릴 수 없습니다.';
+  setGo(false, '열 수 없음');
+  $('#intro').classList.remove('gone');
+}
+
+// ---------- loop ----------
+let last = 0, ema = 1 / 60, slowFor = 0, fastFor = 0, started = false;
+function adapt(real) {
+  ema += (real - ema) * 0.05;
+  if (ema > 1 / 42) { slowFor += real; fastFor = 0; } else if (ema < 1 / 57) { fastFor += real; slowFor = 0; } else { slowFor = 0; fastFor = 0; }
+  if (slowFor > 2 && qi < QUAL.length - 1) { qi++; slowFor = 0; ema = 1 / 60; }
+  if (fastFor > 10 && qi > Q_MIN) { qi--; fastFor = 0; }
+}
+function step(dt) {
+  if (started) { director(dt); updateBreath(dt); if (M.ph === 'descend' || M.ph === 'away' || M.ph === 'ascend') M.waitSim = (M.waitSim || 0) + dt; }
+  else steer(dt, { drift: 0.03 * Math.sin(S.time * 0.13), pitch: 0, speed: 0.05, beat: 0.26, amp: 0.22, yHold: REST_Y });
+  if (motherVisible()) { simulate(dt); updatePile(dt); }
+  updateCam(dt);
+  updateCreatures(dt);
+  updateRipples(dt);
+  capT -= dt; if (capT <= 0) capEl.classList.remove('show');
+  if (CAPQ.length && capT < 3.0) showCap(CAPQ.shift(), true);
+  updateShip(dt);
+  updateHeart(dt);
+  if (TAP.list.length && performance.now() / 1000 - TAP.last > 1.3) evaluateTaps();
+  const listening = performance.now() / 1000 < TAP.listenUntil && motherNear();
+  $('#bCall').classList.toggle('listen', listening);
+  if (RH.el) { RH.fadeT -= dt; if (RH.fadeT <= 0) RH.el.classList.remove('show', 'ok'); }
+  // the dark closing in from the edges, beating with the heart
+  const vp = BR.p, beat = HB.pulse * sstep(0.3, 1, vp);
+  vigEl.style.setProperty('--vr', (68 - 46 * vp) + '%');
+  vigEl.style.setProperty('--va', Math.min(0.96, 0.9 * vp + 0.08 * beat).toFixed(3));
+  idleUI += dt; if (started && idleUI > 4.5 && !MOBILE) document.body.classList.add('quiet');
+  if (callOn > 0) callOn -= dt;
+  $('#bCall').classList.toggle('on', callOn > 0);
+  $('#bBreath').classList.toggle('ask', BR.ask > 0 && BR.t < 0);
+  document.body.classList.toggle('short', BR.ask > 0 && BR.t < 0);
+  const left = BR.t >= 0 ? 1 : clamp(1 - BR.p, 0, 1);
+  $('#breathLine').style.transform = `scaleX(${left.toFixed(3)})`;
+  $('#bBreath').classList.toggle('on', BR.t >= 0);
+}
+function frame(now) {
+  requestAnimationFrame(frame);
+  const real = Math.min((now - (last || now)) / 1000, 1 / 30); last = now;
+  if (!document.hidden) adapt(real);
+  const nowS = now / 1000;
+  while (CODA_Q.length && CODA_Q[0] <= nowS) { CODA_Q.shift(); codaPulse(); }
+  step(real);
+  if (G) render(nowS);
+  updateAudio();
+}
+function restart() {
+  resetRipples();
+  CR.list.length = 0; CR.n = 0;
+  resetState();
+  S.pos = [0, REST_Y, 0]; S.yaw = 0.3; S.speed = 0.05;
+  createSim();
+  M.cycle = 0; M.hidden = false; enter('rest');
+  BR.t = -1; BR.next = 12; BR.held = 0;
+  RING1 = [0, 0, -1]; RING2 = [0, 0, -1];
+  computeGoals();
+  cam.pos = besideAnchor(...NEST); cam.eye = cam.pos.slice(); cam.oy = 0; cam.op = 0; cam.fit = 0;
+  const T = mPoint(0.45, -0.11, 0.10);
+  cam.yaw = Math.atan2(-(T[2] - cam.pos[2]), T[0] - cam.pos[0]); cam.pitch = Math.atan2(T[1] - cam.pos[1], Math.hypot(T[0] - cam.pos[0], T[2] - cam.pos[2]));
+  BR.ask = 0; BR.p = 0; BR.asks = 0; BLINK.t = -1; BLINK.next = 3;
+  SHIP.on = false; SHIP.loud = 0; SHIP.shade = 0; SHIP.block = false;
+  TAP.list.length = 0; TAP.listenUntil = 0; CAPQ.length = 0;
+  const ec = document.getElementById('endcard'); if (ec) ec.classList.remove('show');
+}
+// the start button stays off until the whale is built and the graphics are ready
+function setGo(ready, text) { const b = $('#go'); b.disabled = !ready; b.textContent = text; }
+setGo(false, '준비하는 중…');
+window.addEventListener('error', e => showNoGPU('장면을 준비하는 중에 문제가 생겼습니다: ' + (e.message || e.error)));
+$('#go').addEventListener('click', () => {
+  if (!G || !MESH) return;
+  initAudio();
+  started = true; restart();
+  $('#intro').classList.add('gone');
+  wake();
+  try { navigator.wakeLock && navigator.wakeLock.request('screen').catch(() => {}); } catch (e) {}
+});
+rhythmInit();
+async function boot() {
+  await new Promise(r => setTimeout(r, 30));
+  placeFeatures();
+  buildLattice(MOBILE ? 0.09 : 0.08);
+  const skin = buildSkin(MOBILE ? 0.019 : 0.016);
+  MESH = { verts: buildSkinVertices(skin), idx: skin.I };
+  buildRippleSamples();
+  restart(); started = false;
+  HINGE_B = [bindCell(HINGE_X, HINGE_Y, 0), bindCell(HINGE_X, HINGE_Y, 0.1), bindCell(HINGE_X, HINGE_Y, -0.1)];
+  try { await initGPU(); }
+  catch (err) {
+    console.error(err);
+    const m = String(err.message || err);
+    showNoGPU(m === 'nogpu' ? null : m === 'noadapter' ? 'WebGPU는 켜져 있지만 이 기기에서 그래픽 장치를 찾지 못했습니다. 다른 브라우저나 기기에서 열어 주세요.' : '이 기기에서 장면을 준비하지 못했습니다: ' + m);
+  }
+  if (G) setGo(true, '들어가기');
+  requestAnimationFrame(frame);
+}
+boot();
+
+</script>
+
+<script>
+// keep the whole piece on this device so it opens without a connection after the first visit
+if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+  window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
+}
+</script>
+</body>
+</html>
