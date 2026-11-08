@@ -122,6 +122,11 @@ body.quiet .breath{opacity:.35}
 .credit{margin:0;padding-top:16px;border-top:1px solid color-mix(in srgb,var(--thread) 22%,transparent);font-size:13px;line-height:1.7;color:var(--muted)}
 .credit b{font-weight:400;color:var(--paper)}
 .nogpu{margin:0;font-size:14.5px;line-height:1.6;color:var(--thread)}
+.envact{display:flex;flex-wrap:wrap;gap:8px}
+.envbtn{appearance:none;font:inherit;font-size:14px;color:var(--paper);background:transparent;border:1px solid color-mix(in srgb,var(--thread) 70%,transparent);border-radius:999px;padding:9px 16px;cursor:pointer}
+.envbtn:active{transform:scale(.97)}
+.env{margin:0;font-size:12.5px;line-height:1.65;color:var(--muted)}
+.env b{color:var(--paper);font-weight:600;margin-right:4px}
 @media (prefers-reduced-motion:reduce){.cap,.intro,.bar{transition:none}.b.ask{animation:none}}
 </style>
 
@@ -148,13 +153,15 @@ body.quiet .breath{opacity:.35}
 
 <div class="intro" id="intro">
   <div class="card">
-    <p class="eyebrow">숨의 바다 · 화면구성 컨셉 v1.13 · 실사 형태 + 양모펠트</p>
+    <p class="eyebrow">숨의 바다 · 화면구성 컨셉 v1.14 · 실사 형태 + 양모펠트</p>
     <h1>기다리는 숨</h1>
     <p class="lede">어미 향고래가 깊은 바다로 사냥을 내려가면,<br>아직 숨이 짧은 새끼 향고래는 수면에 남아<br>기다립니다. 이 화면에서 당신은 새끼 향고래의<br>눈과 귀가 됩니다.</p>
     <p class="how">헤드폰을 쓰면 어미의 소리가 어느 쪽, 얼마나 깊은 곳에서 오는지 들립니다. 화면을 끌어 둘러보고, 숨이 차오르면 시야가 어두워지고 심장 소리가 커져요. 그때 ‘숨’을 눌러 수면 위로 올라 숨을 쉬세요. 엄마가 부르면 ‘Coda’ 버튼을 엄마의 리듬에 맞춰 두드려 대답해 보세요. 장면은 3분 남짓 이어지고 처음으로 돌아갑니다.</p>
     <p class="nogpu" id="nogpu" hidden></p>
+    <div class="envact" id="envAct" hidden></div>
     <button class="go" id="go" type="button">들어가기</button>
-    <p class="credit">양모펠트 향고래 원작 <b>humming whales</b><br>기획·구성 <b>whales.breathe</b><br>실제 향고래의 사냥 잠수는 40분을 넘기도 합니다. 이 장면은 그 시간을 약 1분으로 줄였습니다.</p>
+    <p class="credit">양모펠트 향고래 원작 <b>humming whales</b><br>기획·구성 <b>whales.breathe</b><br>실제 향고래의 사냥 잠수는 40분을 넘기도 합니다. 이 장면은 그 시간을 약 2분으로 줄였습니다.</p>
+    <p class="env"><b>관람 환경</b> PC: 최신 Chrome·Edge · 아이폰·아이패드: iOS 26 이상 Safari · 안드로이드: 12 이상 Chrome(일부 기종 제외) · 카카오톡 등 앱 안 브라우저 불가 · 헤드폰 권장</p>
   </div>
 </div>
 
@@ -2287,9 +2294,11 @@ const SURF = 0;
 const FABRIC = { top: [0.64, 0.65, 0.66], top2: [0.27, 0.28, 0.30], belly: [0.91, 0.90, 0.87], thread: [0.16, 0.17, 0.19] };
 const MOBILE = matchMedia('(pointer: coarse)').matches || /Android|iPhone|iPad/i.test(navigator.userAgent);
 const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
-const QUAL = [{ shells: 14, dpr: 2 }, { shells: 11, dpr: 1.6 }, { shells: 8, dpr: 1.3 }, { shells: 6, dpr: 1.0 }];
+// quality steps, best first: fur layers, pixel density, and a ceiling on the number of pixels drawn
+const QUAL = [{ shells: 14, dpr: 2, px: 4.2e6 }, { shells: 11, dpr: 1.6, px: 2.6e6 }, { shells: 8, dpr: 1.3, px: 1.6e6 }, { shells: 6, dpr: 1.0, px: 1.1e6 },
+  { shells: 4, dpr: 0.85, px: 0.75e6 }, { shells: 3, dpr: 0.7, px: 0.5e6 }];
 const Q_MIN = MOBILE ? 1 : 0;
-let qi = Q_MIN;
+let qi = MOBILE ? 2 : 0;
 const N_FIB = MOBILE ? 266 : 455;
 const FIB_SEG = 10;
 const SUN = (() => { const v = [-0.25, 1, 0.18], l = Math.hypot(...v); return v.map(x => x / l); })();
@@ -3066,14 +3075,15 @@ function updateRipples(dt) {
 }
 
 // ---------- GPU ----------
-let G = null, MESH = null, HINGE_B = null;
+let G = null, MESH = null, HINGE_B = null, GPU_RETRIED = false;
 async function initGPU() {
   if (!navigator.gpu) throw new Error('nogpu');
   // some devices answer only a plain request, so ask again without the preference before giving up
-  let adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
-  if (!adapter) adapter = await navigator.gpu.requestAdapter();
+  const within = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]);
+  let adapter = await within(navigator.gpu.requestAdapter({ powerPreference: 'high-performance' }), 10000);
+  if (!adapter) adapter = await within(navigator.gpu.requestAdapter(), 10000);
   if (!adapter) throw new Error('noadapter');
-  const device = await adapter.requestDevice();
+  const device = await within(adapter.requestDevice(), 10000);
   const ctx = canvas.getContext('webgpu');
   const format = navigator.gpu.getPreferredCanvasFormat();
   ctx.configure({ device, format, alphaMode: 'opaque', usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC });
@@ -3136,14 +3146,26 @@ async function initGPU() {
   };
   const err = await device.popErrorScope();
   if (err) throw new Error(err.message);
-  device.lost.then(i => { if (i.reason !== 'destroyed') { G = null; showNoGPU('그래픽 장치와의 연결이 끊겼습니다. 페이지를 새로 고쳐 다시 시작해 주세요.'); } });
+  // if the device gives up (an overloaded phone can drop it), start again once at the lightest setting
+  device.lost.then(async i => {
+    if (i.reason === 'destroyed') return;
+    G = null;
+    if (!GPU_RETRIED) {
+      GPU_RETRIED = true; qi = QUAL.length - 1;
+      try { await initGPU(); return; } catch (err) { console.error(err); }
+    }
+    showAdvice('error', '그래픽 장치가 멈췄어요. 이 기기에는 장면이 너무 무거운 것 같아요. 페이지를 새로 고치거나 PC·다른 기기에서 열어 주세요.');
+    showNoGPU();
+  });
   const shipData = buildShipMesh(), shipBuf = mk(shipData, GPUBufferUsage.VERTEX);
   const propData = buildPropMesh(), propBuf = mk(propData, GPUBufferUsage.VERTEX);
   G = { device, ctx, format, ubuf, creBuf, ripBuf, shipBuf, shipN: shipData.length / 9, propBuf, propN: propData.length / 9, posBuf, leanBuf, vbuf, ibuf, bind, pipes, nIdx: MESH.idx.length, msaa: null, depthTex: null, w: 0, h: 0, u: new Float32Array(92) };
 }
 function ensureTargets() {
-  const dpr = Math.min(window.devicePixelRatio || 1, QUAL[qi].dpr);
-  const w = Math.max(1, Math.round(canvas.clientWidth * dpr)), h = Math.max(1, Math.round(canvas.clientHeight * dpr));
+  let dpr = Math.min(window.devicePixelRatio || 1, QUAL[qi].dpr);
+  const cw = Math.max(1, canvas.clientWidth), ch = Math.max(1, canvas.clientHeight);
+  dpr = Math.min(dpr, Math.sqrt(QUAL[qi].px / (cw * ch)));
+  const w = Math.max(1, Math.round(cw * dpr)), h = Math.max(1, Math.round(ch * dpr));
   cam.aspect = w / h;
   if (w === G.w && h === G.h) return;
   canvas.width = w; canvas.height = h; G.w = w; G.h = h;
@@ -3516,20 +3538,65 @@ let idleUI = 0;
 function wake() { idleUI = 0; document.body.classList.remove('quiet'); }
 ['pointermove', 'pointerdown', 'touchstart'].forEach(ev => window.addEventListener(ev, wake, { passive: true }));
 
+// What kind of phone, tablet or computer, and which browser, from what it says about itself
+function envInfo() {
+  const ua = navigator.userAgent || '';
+  const iPadOS = /Macintosh/.test(ua) && navigator.maxTouchPoints > 1;
+  const ios = /iPhone|iPad|iPod/.test(ua) || iPadOS;
+  const iosVer = ios ? (+((ua.match(/OS (\d+)_/) || [])[1] || (ua.match(/Version\/(\d+)/) || [])[1] || 0)) : 0;
+  const android = /Android/.test(ua), androidVer = android ? +((ua.match(/Android (\d+)/) || [])[1] || 0) : 0;
+  const kakao = /KAKAOTALK/i.test(ua);
+  const inApp = kakao || /Instagram|FBAN|FBAV|NAVER\(inapp|Line\/|DaumApps|everytimeApp|BAND\/|; wv\)/i.test(ua);
+  const samsung = /SamsungBrowser/i.test(ua), firefox = /Firefox|FxiOS/i.test(ua);
+  const iosOther = ios && /CriOS|FxiOS|EdgiOS|Whale|NAVER/i.test(ua);
+  return { ua, ios, iosVer, android, androidVer, kakao, inApp, samsung, firefox, iosOther, linux: /Linux/.test(ua) && !android };
+}
+function envAdvice(kind) {
+  const e = envInfo();
+  if (e.inApp) return { msg: '카카오톡·인스타그램 같은 앱 안의 브라우저에서는 열리지 않아요. 화면 위 메뉴(⋮ 또는 ···)에서 ‘다른 브라우저로 열기’를 눌러 ' + (e.ios ? 'Safari' : 'Chrome') + '에서 열어 주세요.', open: true };
+  if (e.ios && e.iosVer && e.iosVer < 26) return { msg: 'iOS·iPadOS 26 이상에서 열려요. 지금 기기는 ' + e.iosVer + '이에요. 설정 → 일반 → 소프트웨어 업데이트에서 업데이트해 주세요(iPhone 11·iPad 8세대 이후 모델이 업데이트할 수 있어요).' };
+  if (e.iosOther) return { msg: '아이폰·아이패드에서는 Safari로 열어 주세요.', copy: true };
+  if (e.samsung) return { msg: '삼성 인터넷에서는 열리지 않을 수 있어요. Chrome에서 열어 주세요.', open: true };
+  if (e.android && e.firefox) return { msg: '안드로이드 Firefox에서는 아직 열리지 않아요. Chrome에서 열어 주세요.', open: true };
+  if (e.android && e.androidVer && e.androidVer < 12) return { msg: '안드로이드 12 이상의 Chrome에서 열려요. 지금 기기는 안드로이드 ' + e.androidVer + '이에요. PC나 다른 기기에서 열어 주세요.' };
+  if (e.android && kind === 'noadapter') return { msg: '이 휴대폰의 그래픽 칩은 아직 Chrome의 WebGPU를 지원하지 않아요(엑시노스 칩을 쓰는 일부 갤럭시 등). PC나 아이폰·아이패드, 다른 안드로이드 기기에서 열어 주세요.' };
+  if (e.linux) return { msg: '리눅스에서는 아직 열리지 않아요. 윈도우·맥의 Chrome이나 Edge, 또는 아이폰·아이패드 Safari에서 열어 주세요.' };
+  if (kind === 'noadapter') return { msg: '이 기기에서 그래픽 장치를 찾지 못했어요. 브라우저를 최신으로 업데이트하거나, 다른 브라우저(Chrome·Edge·Safari)나 기기에서 열어 주세요.' };
+  if (kind === 'timeout') return { msg: '그래픽 장치가 응답하지 않아요. 페이지를 새로 고치거나 다른 브라우저·기기에서 열어 주세요.' };
+  return { msg: '이 작품은 WebGPU가 되는 브라우저에서 보여요. PC는 최신 Chrome·Edge, 아이폰·아이패드는 iOS 26 이상의 Safari, 안드로이드는 Chrome에서 열어 주세요.', open: e.android };
+}
+function showAdvice(kind, detail) {
+  const ad = envAdvice(kind), e = envInfo();
+  const el = $('#nogpu'); el.hidden = false; el.textContent = detail || ad.msg;
+  const box = $('#envAct'); box.hidden = false; box.innerHTML = '';
+  const url = location.href.split('#')[0];
+  const btn = (label, fn) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'envbtn'; b.textContent = label; b.addEventListener('click', fn); box.appendChild(b); };
+  if (ad.open && e.kakao) btn('바깥 브라우저로 열기', () => { location.href = 'kakaotalk://web/openExternal?url=' + encodeURIComponent(url); });
+  else if (ad.open && e.android) btn('Chrome으로 열기', () => { location.href = 'intent://' + url.replace(/^https?:\/\//, '') + '#Intent;scheme=https;package=com.android.chrome;end'; });
+  btn('주소 복사', async () => {
+    try { await navigator.clipboard.writeText(url); box.lastChild.textContent = '복사했어요'; }
+    catch (err) { prompt('주소를 복사해 주세요', url); }
+  });
+}
 function showNoGPU(msg) {
-  const el = $('#nogpu'); el.hidden = false;
-  el.textContent = msg || '이 작품은 WebGPU가 켜진 최신 Chrome, Edge 또는 Safari에서 보입니다. 지금 브라우저에서는 장면을 그릴 수 없습니다.';
+  if (msg) { const el = $('#nogpu'); el.hidden = false; el.textContent = msg; }
   setGo(false, '열 수 없음');
   $('#intro').classList.remove('gone');
 }
 
 // ---------- loop ----------
-let last = 0, ema = 1 / 60, slowFor = 0, fastFor = 0, started = false;
-function adapt(real) {
-  ema += (real - ema) * 0.05;
-  if (ema > 1 / 42) { slowFor += real; fastFor = 0; } else if (ema < 1 / 57) { fastFor += real; slowFor = 0; } else { slowFor = 0; fastFor = 0; }
-  if (slowFor > 2 && qi < QUAL.length - 1) { qi++; slowFor = 0; ema = 1 / 60; }
-  if (fastFor > 10 && qi > Q_MIN) { qi--; fastFor = 0; }
+let last = 0, ema = 1 / 60, slowFor = 0, fastFor = 0, started = false, stillSlow = 0, slowNoted = false;
+// Watches the real time between frames. When the device can't keep up it steps quality down quickly
+// (a slow frame counts for all the time it took); when there is room again, it creeps back up.
+function adapt(raw) {
+  if (raw > 0.5) return;                       // a pause (tab hidden, a long hitch) says nothing about speed
+  ema += (raw - ema) * 0.08;
+  if (ema > 1 / 40) { slowFor += raw; fastFor = 0; } else if (ema < 1 / 57) { fastFor += raw; slowFor = 0; } else { slowFor = 0; fastFor = 0; }
+  if (slowFor > 0.8 && qi < QUAL.length - 1) { qi++; slowFor = 0; ema = 1 / 45; }
+  if (fastFor > 12 && qi > Q_MIN) { qi--; fastFor = 0; }
+  // at the lowest step and still struggling: say so once, gently
+  if (qi === QUAL.length - 1 && ema > 1 / 20) stillSlow += raw; else stillSlow = Math.max(0, stillSlow - raw);
+  if (started && !slowNoted && stillSlow > 6) { slowNoted = true; showCap('이 기기에서는 장면이 느리게 그려지고 있어요. PC나 최신 기기에서 더 부드럽게 볼 수 있어요.', true); }
 }
 function step(dt) {
   if (started) { director(dt); updateBreath(dt); if (M.ph === 'descend' || M.ph === 'away' || M.ph === 'ascend') M.waitSim = (M.waitSim || 0) + dt; }
@@ -3561,11 +3628,15 @@ function step(dt) {
 }
 function frame(now) {
   requestAnimationFrame(frame);
-  const real = Math.min((now - (last || now)) / 1000, 1 / 30); last = now;
-  if (!document.hidden) adapt(real);
+  const raw = (now - (last || now)) / 1000; last = now;
+  if (!document.hidden) adapt(raw);
+  // the scene keeps real time: a slow device shows fewer frames, never slow motion
+  const elapsed = Math.min(raw, 0.25);
+  const nSub = Math.max(1, Math.min(4, Math.ceil(elapsed / (1 / 30) - 1e-6)));
+  const real = elapsed / nSub;
   const nowS = now / 1000;
   while (CODA_Q.length && CODA_Q[0] <= nowS) { CODA_Q.shift(); codaPulse(); }
-  step(real);
+  for (let k = 0; k < nSub; k++) step(real);
   if (G) render(nowS);
   updateAudio();
 }
@@ -3602,6 +3673,20 @@ $('#go').addEventListener('click', () => {
 rhythmInit();
 async function boot() {
   await new Promise(r => setTimeout(r, 30));
+  if (!navigator.gpu) { showAdvice('nogpu'); showNoGPU(); return; }   // say so at once, before any work
+  try { await prepareScene(); }
+  catch (err) { console.error(err); showAdvice('error', '장면을 준비하다 문제가 생겼어요: ' + (err.message || err)); showNoGPU(); return; }
+  try { await initGPU(); }
+  catch (err) {
+    console.error(err);
+    const m = String(err.message || err);
+    if (m === 'nogpu' || m === 'noadapter' || m === 'timeout') showAdvice(m); else showAdvice('error', '이 기기에서 장면을 준비하지 못했어요: ' + m);
+    showNoGPU();
+  }
+  if (G) setGo(true, '들어가기');
+  requestAnimationFrame(frame);
+}
+async function prepareScene() {
   placeFeatures();
   buildLattice(MOBILE ? 0.09 : 0.08);
   const skin = buildSkin(MOBILE ? 0.019 : 0.016);
@@ -3609,14 +3694,6 @@ async function boot() {
   buildRippleSamples();
   restart(); started = false;
   HINGE_B = [bindCell(HINGE_X, HINGE_Y, 0), bindCell(HINGE_X, HINGE_Y, 0.1), bindCell(HINGE_X, HINGE_Y, -0.1)];
-  try { await initGPU(); }
-  catch (err) {
-    console.error(err);
-    const m = String(err.message || err);
-    showNoGPU(m === 'nogpu' ? null : m === 'noadapter' ? 'WebGPU는 켜져 있지만 이 기기에서 그래픽 장치를 찾지 못했습니다. 다른 브라우저나 기기에서 열어 주세요.' : '이 기기에서 장면을 준비하지 못했습니다: ' + m);
-  }
-  if (G) setGo(true, '들어가기');
-  requestAnimationFrame(frame);
 }
 boot();
 
