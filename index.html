@@ -148,7 +148,7 @@ body.quiet .breath{opacity:.35}
 
 <div class="intro" id="intro">
   <div class="card">
-    <p class="eyebrow">숨의 바다 · 화면구성 컨셉 v1.10 · 실사 형태 + 양모펠트</p>
+    <p class="eyebrow">숨의 바다 · 화면구성 컨셉 v1.13 · 실사 형태 + 양모펠트</p>
     <h1>기다리는 숨</h1>
     <p class="lede">어미 향고래가 깊은 바다로 사냥을 내려가면,<br>아직 숨이 짧은 새끼 향고래는 수면에 남아<br>기다립니다. 이 화면에서 당신은 새끼 향고래의<br>눈과 귀가 됩니다.</p>
     <p class="how">헤드폰을 쓰면 어미의 소리가 어느 쪽, 얼마나 깊은 곳에서 오는지 들립니다. 화면을 끌어 둘러보고, 숨이 차오르면 시야가 어두워지고 심장 소리가 커져요. 그때 ‘숨’을 눌러 수면 위로 올라 숨을 쉬세요. 엄마가 부르면 ‘Coda’ 버튼을 엄마의 리듬에 맞춰 두드려 대답해 보세요. 장면은 3분 남짓 이어지고 처음으로 돌아갑니다.</p>
@@ -879,7 +879,7 @@ function sdMainBody(x, y, z) {
 // short, broad, spoon-shaped flippers set low behind the eye
 const RFLIP_L = makeFoil([0.17, -0.132, 0.094], [-0.01, -0.168, 0.182], [0, 1, 0], 0.074, 0.036, 0.020, 0.0135);
 const RFLIP_R = makeFoil([0.17, -0.132, -0.094], [-0.01, -0.168, -0.182], [0, 1, 0], 0.074, 0.036, 0.020, 0.0135);
-FLIP_ROOT_L.splice(0, 3, 0.17, -0.132, 0.094); FLIP_ROOT_R.splice(0, 3, 0.17, -0.132, -0.094);
+FLIP_ROOT_L.splice(0, 3, 0.17, -0.12, 0.101); FLIP_ROOT_R.splice(0, 3, 0.17, -0.12, -0.101);
 function sdPaddle(F, x, y, z) {
   const bd = bboxD(x, y, z, F.bb); if (bd > 0.1) return bd;
   const rx = x - F.a[0], ry = y - F.a[1], rz = z - F.a[2];
@@ -950,15 +950,70 @@ function sdSpoon(F, x, y, z) {
   const th = 0.013 - 0.004 * t, rr = 0.006;
   return boxComb(d2 + rr, Math.abs(qt) - th + rr) - rr;
 }
-function sdFlippers(x, y, z) { return Math.min(sdSpoon(RFLIP_L, x, y, z), sdSpoon(RFLIP_R, x, y, z)); }
+// The sperm whale's flipper, after photographs: a flat, thin paddle laid back along the lower flank (about 16° down, 16° out),
+// about a tenth of the body long. It leaves the body through a narrow wrist; the upper (trailing) edge runs almost
+// straight, the lower (leading) edge swells out, and the end is broad and squarely rounded.
+// Frame: n runs from root to tip, cd lies across the blade toward its upper, trailing edge, td is the flat face's normal.
+function makeFlip(a, dir, len, faceHint) {
+  const n = norm3(dir);
+  let td = [faceHint[0], faceHint[1], faceHint[2]];
+  const k = td[0] * n[0] + td[1] * n[1] + td[2] * n[2];
+  td = norm3([td[0] - n[0] * k, td[1] - n[1] * k, td[2] - n[2] * k]);
+  let cd = norm3(cross3(td, n));
+  if (cd[1] < 0) cd = cd.map(v => -v);
+  const b = [a[0] + n[0] * len, a[1] + n[1] * len, a[2] + n[2] * len], p = 0.07;
+  return { a, n, len, cd, td,
+    bb: [Math.min(a[0], b[0]) - p, Math.min(a[1], b[1]) - p, Math.min(a[2], b[2]) - p, Math.max(a[0], b[0]) + p, Math.max(a[1], b[1]) + p, Math.max(a[2], b[2]) + p] };
+}
+const FLIP_A = [0.17, -0.12, 0.101];   // a little higher on the flank
+let FLIP_STUB = false;
+const RFLIP2_L = makeFlip(FLIP_A, [-0.85, -0.25, 0.24], 0.175, [0.30, -0.30, 1.0]);
+const RFLIP2_R = makeFlip([FLIP_A[0], FLIP_A[1], -FLIP_A[2]], [-0.85, -0.25, -0.24], 0.175, [0.30, -0.30, -1.0]);
+function sdFlip2(F, x, y, z) {
+  const bd = bboxD(x, y, z, F.bb); if (bd > 0.1) return bd;
+  const rx = x - F.a[0], ry = y - F.a[1], rz = z - F.a[2];
+  const al = rx * F.n[0] + ry * F.n[1] + rz * F.n[2];
+  const qc = rx * F.cd[0] + ry * F.cd[1] + rz * F.cd[2], qt = rx * F.td[0] + ry * F.td[1] + rz * F.td[2];
+  const t = clamp(al / F.len, 0, 1);
+  const te = 0.022 + 0.012 * t;                                  // upper edge: nearly straight
+  const le = -(0.026 + 0.034 * sstep(0.0, 0.70, t));             // lower edge: swelling out past the wrist
+  const e = Math.max(0, (t - 0.60) / 0.40), round = Math.pow(Math.max(0, 1 - Math.pow(e, 2.6)), 1 / 2.6);  // a squarish, rounded end
+  const m = (te + le) * 0.5, hw = Math.max((te - le) * 0.5 * round, 1e-4);
+  const th = 0.0115 - 0.0025 * t;                                 // thick at the root and leading edge, thinner toward the tip
+  const u = (qc - m) / hw, w = qt / (th * (1 - 0.35 * clamp(u, 0, 1)));   // thicker along the leading edge, thin trailing edge
+  const d = (Math.hypot(u, w) - 1) * Math.min(hw, th);
+  return Math.max(d, al - (FLIP_STUB ? 0.012 : F.len), -al - 0.03);
+}
+function sdFlippers(x, y, z) { return Math.min(sdFlip2(RFLIP2_L, x, y, z), sdFlip2(RFLIP2_R, x, y, z)); }
 function sdUncut(x, y, z) {
   let d = sdMainBody(x, y, z);
   d = smin(d, sdFluke(x, y, z), 0.035);
-  // the paddle joins the body only at its root; further back it is a separate fin with clear water above it
-  const rl = Math.hypot(x - 0.17, y + 0.132, Math.abs(z) - 0.094), kf = 0.002 + 0.018 * sstep(0.07, 0.0, rl);
-  d = smin(d, sdSpoon(RFLIP_L, x, y, z), kf);
-  d = smin(d, sdSpoon(RFLIP_R, x, y, z), kf);
+  // the flipper grows out of the flank through a soft fillet at the root only; beyond it, clear water all round
+  const rl = Math.hypot(x - FLIP_A[0], y - FLIP_A[1], Math.abs(z) - FLIP_A[2]), kf = 0.002 + 0.016 * sstep(0.06, 0.0, rl);
+  d = smin(d, sdFlip2(RFLIP2_L, x, y, z), kf);
+  d = smin(d, sdFlip2(RFLIP2_R, x, y, z), kf);
   return d;
+}
+// The blade is thinner than the body mesh's grid can hold, so it gets its own, finer mesh. The body is meshed with only
+// a short stub and its soft collar at the root; the blade mesh starts inside that collar, so the two read as one piece.
+// Both are skinned to the same lattice, so the flipper still moves with the body.
+function mergeMeshes(A, B) {
+  const P = new Float32Array(A.P.length + B.P.length), N = new Float32Array(A.N.length + B.N.length), I = new Uint32Array(A.I.length + B.I.length);
+  P.set(A.P); P.set(B.P, A.P.length); N.set(A.N); N.set(B.N, A.N.length);
+  I.set(A.I); for (let t = 0; t < B.I.length; t++) I[A.I.length + t] = B.I[t] + A.nv;
+  return { P, N, I, nv: A.nv + B.nv, volume: A.volume, length: A.length };
+}
+function buildSkin(g) {
+  FLIP_STUB = true;
+  const body = surfaceNets(sdWhale, [-1.52, -0.30, -0.52], [0.94, 0.30, 0.52], g, true);
+  FLIP_STUB = false;
+  const gf = Math.min(g * 0.36, 0.0062);
+  let out = body;
+  for (const F of [RFLIP2_L, RFLIP2_R]) {
+    const blade = surfaceNets((x, y, z) => sdFlip2(F, x, y, z), [F.bb[0], F.bb[1], F.bb[2]], [F.bb[3], F.bb[4], F.bb[5]], gf, false);
+    out = mergeMeshes(out, blade);
+  }
+  return out;
 }
 
 EYE.r = 0.0105;
@@ -993,6 +1048,8 @@ struct U {
   look: vec4f,
   ship: vec4f,
   ship2: vec4f,
+  spout: vec4f,
+  spout2: vec4f,
 };
 @group(0) @binding(0) var<uniform> u: U;
 @group(0) @binding(1) var<storage, read> cells: array<u32>;
@@ -1200,6 +1257,10 @@ fn region(p: vec3f, n: vec3f, app: f32) -> Reg {
     } else {
       dk += smoothstep(0.26, 0.44, abs(p.z)) * 0.6 + smoothstep(-1.25, -1.4, p.x) * 0.3;
     }
+  }
+  if (app > 0.3 && p.x > -0.06 && p.x < 0.21 && p.y < -0.11) {
+    lt *= 0.2;
+    dk = max(dk, 0.30 + 0.25 * smoothstep(0.08, 0.0, p.x));   // a little darker toward the end of the paddle
   }
   let jaw = select(0.0, 1.0, p.y < YMOUTH + 0.004 && p.x > 0.30 && abs(p.z) < 0.07) * smoothstep(0.30, 0.40, p.x);
   if (jaw > 0.0) {
@@ -1945,6 +2006,59 @@ fn h11(n: f32) -> f32 { return fract(sin(n * 127.1) * 43758.5453); }
   return vec4f(col, a);
 }
 
+// ===== her blow: a bushy spout thrown up and forward, then a drifting cloud of mist =====
+// Each puff leaves the blowhole at some instant of the out-breath (most in the first moment), is slowed by the air,
+// spreads, drifts downwind and fades; the heavier droplets fall back.
+struct SpOut { @builtin(position) pos: vec4f, @location(0) uv: vec2f, @location(1) a: f32, @location(2) lit: f32 };
+@vertex fn vsSpout(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> SpOut {
+  var o: SpOut;
+  let fi = f32(ii);
+  let k = u.spout2.w;
+  let h1 = h11(fi * 0.731 + 0.3);
+  let h2 = h11(fi * 1.913 + 2.1);
+  let h3 = h11(fi * 3.377 + 5.7);
+  let h4 = h11(fi * 5.531 + 1.3);
+  let emit = pow(h1, 1.8) * 1.4;
+  let a = u.eye.w - u.spout.w - emit;
+  let life = 3.2 + 2.6 * h2;
+  let d = normalize(u.spout2.xyz);
+  // a cone around the spout's line, widening a little
+  var side = normalize(cross(d, vec3f(0.0, 1.0, 0.0)) + vec3f(0.0, 0.0, 1e-4));
+  let up = normalize(cross(side, d));
+  let ang = h3 * 6.2832;
+  let spread = 0.06 + 0.16 * h4 * h4 + 0.10 * h1;   // a tight jet at first, bushier later in the breath
+  let dir = normalize(d + (side * cos(ang) + up * sin(ang)) * spread);
+  let v0 = (2.0 + 0.9 * h2) * k * (1.0 - 0.45 * emit / 1.4);
+  let kd = 2.2;
+  let aa = max(a, 0.0);
+  let travel = v0 / kd * (1.0 - exp(-kd * aa));
+  let heavy = select(0.0, 1.0, h4 > 0.7);
+  // the cloud spreads as it hangs: each puff wanders off the line it was thrown on
+  let wander = vec3f(h11(fi * 7.1) - 0.5, (h11(fi * 8.3) - 0.5) * 0.6, h11(fi * 9.7) - 0.5) * (0.30 * aa / (1.0 + 0.35 * aa));
+  var p = u.spout.xyz + dir * travel + wander + vec3f(0.16, 0.035 * (1.0 - heavy), 0.06) * aa - vec3f(0.0, 0.22 * heavy * aa * aa, 0.0);
+  let above = smoothstep(0.0, 0.10, p.y - u.world.x);   // droplets that fall back are gone into the sea
+  p.y = max(p.y, u.world.x + 0.01);
+  let size = min(0.018 + 0.03 * h3 + 0.075 * aa * (1.0 - 0.6 * heavy), 0.30);
+  var cs6 = array<vec2f, 6>(vec2f(-1.0, -1.0), vec2f(1.0, -1.0), vec2f(1.0, 1.0), vec2f(-1.0, -1.0), vec2f(1.0, 1.0), vec2f(-1.0, 1.0));
+  let c = cs6[vi];
+  let wp = p + u.camR.xyz * c.x * size + u.camU.xyz * c.y * size;
+  o.pos = u.viewProj * vec4f(wp, 1.0);
+  o.uv = c;
+  let alive = select(0.0, 1.0, a > 0.0 && a < life);
+  o.a = alive * k * smoothstep(0.0, 0.06, a) * (1.0 - smoothstep(life * 0.45, life, a)) * (0.022 + 0.09 * exp(-a * 1.4)) * (1.0 - 0.5 * heavy) * above;
+  o.lit = 0.85 + 0.15 * h2;
+  return o;
+}
+@fragment fn fsSpout(i: SpOut) -> @location(0) vec4f {
+  let r2 = dot(i.uv, i.uv);
+  let m = exp(-r2 * 2.6) * (1.0 - smoothstep(0.7, 1.0, r2));
+  let a = m * i.a;
+  if (a < 0.003) { discard; }
+  // sunlit mist: white on its sunny side, a breath of blue-grey in its own shade
+  let col = mix(vec3f(0.78, 0.83, 0.88), vec3f(1.0, 1.0, 0.99), i.lit * (0.6 + 0.4 * (1.0 - i.uv.y * 0.5)));
+  return vec4f(col, a);
+}
+
 @fragment fn fsBase(i: VOut) -> @location(0) vec4f {
   let n = normalize(i.wn);
   let r = region(i.rp, normalize(i.rn), i.ex.x);
@@ -2227,8 +2341,9 @@ const BREATH_HOLD = 22; // the breath line empties over this long
 function breathEnv() {
   const t = BR.t; if (t < 0) return 0;
   if (t < 1.1) return sstep(0, 1.1, t);
-  if (t < 2.9) return 1;
-  return 1 - sstep(2.9, 4.6, t);
+  const x = BR.extra || 0;
+  if (t < 2.9 + x) return 1;
+  return 1 - sstep(2.9 + x, 4.6 + x, t);
 }
 function breathe() {
   if (BR.t >= 0) return;
@@ -2249,23 +2364,25 @@ function updateBreath(dt) {
   if (BR.t >= 0) {
     const prev = BR.t; BR.t += dt;
     if (prev < 1.15 && BR.t >= 1.15) { RING2 = [cam.pos[0], cam.pos[2], 0]; calfBreathSound(); BR.held = 0; }
-    if (BR.t > 4.6) { BR.t = -1; BR.next = 20 + Math.random() * 5; }
+    if (BR.t > 4.6 + (BR.extra || 0)) { BR.t = -1; BR.extra = 0; BR.next = 20 + Math.random() * 5; }
   } else {
     BR.held += dt; BR.next -= dt;
     if (BR.ask > 0) { if (SHIP.block) BR.ask = Math.min(BR.ask, 1.5); else { BR.ask -= dt; if (BR.ask <= 0) breathe(); } }
     else {
       // while the mother is down, the calf goes up when it runs short of breath
       const below = M.ph === 'fluke' || M.ph === 'descend' || M.ph === 'away' || M.ph === 'ascend';
-      if (below && BR.p > 0.6) askBreath();
+      // while she rises the calf does not go up again: it keeps its eyes on her until she is back at the surface
+      if (below && M.ph !== 'ascend' && BR.p > 0.6) askBreath();
       const busy = below || M.ph === 'ascend' || (M.ph === 'reunion' && M.t < 8);
       if (BR.next <= 0 && !busy) breathe();
-      if (BR.held > 50 && !SHIP.block) breathe();
+      if (BR.held > 50 && !SHIP.block && M.ph !== 'ascend') breathe();
     }
   }
   // how short of breath the calf is: nothing for a while, then rising; gone again after a breath
   // only below, waiting for her, does running short of breath close in; at the surface the calf just breathes
   const deepNow = M.ph === 'fluke' || M.ph === 'descend' || M.ph === 'away' || M.ph === 'ascend';
-  const target = BR.t >= 0 || !deepNow ? 0 : sstep(10, 27, BR.held);
+  let target = BR.t >= 0 || !deepNow ? 0 : sstep(10, 27, BR.held);
+  if (M.ph === 'ascend') target = Math.min(target, 0.25 * sstep(14, 40, BR.held));   // watching her come, the breath can wait
   BR.p += (target - BR.p) * Math.min(1, dt * (target < BR.p ? 2.2 : 0.7));
 }
 
@@ -2278,7 +2395,7 @@ const CAPS = {
   fluke: [[1.2, '엄마가 몸을 세워요.']],
   descend: [[5, '엄마가 빛이 닿지 않는 곳으로 내려가요.'], [13.5, '나는 따라갈 수 없어요. 아직 숨이 짧기 때문이에요.'], [22, '수면 가까이에 남아 엄마가 돌아오기를 기다려요.']],
   away: [[9, '저 아래에서 딸깍, 딸깍, 엄마의 소리예요.'], [21.5, '소리가 빨라지네요, 사냥하는 소리.'], [35.5, '머리 위로 커다란 그림자가 지나가요.'], [41.5, '엄마 소리가 들리지 않아요.'], [54, '소리가 멎었어요.'], [61, '다시, 소리.']],
-  ascend: [[4, '소리가 가까워져요.'], [14, '어둠 속에서 무언가 떠올라요.']],
+  ascend: [[0.8, '엄마를 맞으려고 숨을 크게 쉬어 둬요.'], [6, '소리가 가까워져요.'], [14, '어둠 속에서 무언가 떠올라요.']],
   reunion: [[1.5, '다시, 같이 숨을 쉬어요.'], [9, '수면 바로 아래, 엄마의 곁에서.']],
 };
 const AWAY_LEN = 70;
@@ -2286,6 +2403,7 @@ function enter(ph) {
   M.ph = ph; M.t = 0; M.codaDone = false; M.calfAt = -1; M.replyAt = -1; M.saw = false; M.together = false; M.shipDone = false; M.endShown = false;
   M.caps = (CAPS[ph] || []).filter(c => !(c[2] === 'first' && M.cycle > 0)).map(c => c.slice());
   if (ph === 'rest') M.nextBlow = 2.5;
+  if (ph === 'reunion') { M.nextBlow = 2.4; M.bigBlow = true; }
   if (ph === 'gather') M.nextBlow = 0.8;
   if (ph === 'reunion') M.nextBlow = 1.9;
   if (ph === 'away' && FV.q.length === 0) FV.last = '';
@@ -2334,12 +2452,18 @@ function steer(dt, o) {
   S.jaw = clamp(S.jaw + S.jawV * dt, -0.02, 0.85);
   if (S.jaw <= -0.02 && S.jawV < 0) S.jawV = 0;
 }
+const SPOUT = { o: [0, 0, 0], d: [0, 1, 0], t0: -100, k: 0 };
 function blows(t, every) {
   if (t < M.nextBlow) return;
   M.nextBlow = t + every * (0.85 + 0.3 * Math.random());
   computeGoals();
   const b = mPoint(BLOW.x, BLOW.y, BLOW.z);
   RING1 = [b[0], b[2], 0];
+  // the spout leans forward and to her left (the blowhole sits on the left of the head)
+  const b2 = mPoint(BLOW.x + 0.062, BLOW.y + 0.072, BLOW.z - 0.030);
+  SPOUT.o = [b[0], Math.max(b[1], SURF + 0.02), b[2]];
+  SPOUT.d = norm3([b2[0] - b[0], b2[1] - b[1], b2[2] - b[2]]);
+  SPOUT.t0 = S.time; SPOUT.k = M.bigBlow ? 1.0 : 0.62; M.bigBlow = false;
   S.nodV += 1.0;
   motherBlowSound(b);
 }
@@ -2446,6 +2570,8 @@ function director(dt) {
       if (t > AWAY_LEN) enter('ascend');
       break;
     case 'ascend': {
+      // one full breath first, while she is still deep and out of sight, so the calf can watch her all the way up
+      if (!M.together && t > 0.6) { M.together = true; if (BR.t < 0 && BR.held > 3) { BR.ask = 0; breathe(); } }
       const dx = M.arrive[0] - S.pos[0], dz = M.arrive[2] - S.pos[2];
       const deep = S.pos[1] < -2.4;
       const pitch = deep ? 1.12 : clamp((REST_Y - S.pos[1]) * 0.9, -0.15, 0.8);
@@ -2457,9 +2583,10 @@ function director(dt) {
       break;
     }
     case 'reunion':
-      steer(dt, { pitch: 0, speed: 0.07, beat: 0.3, amp: 0.3, yHold: REST_Y });
+      // back at the surface after the dive she lies high for a while, head and back out of the water, and blows
+      steer(dt, { pitch: 0, speed: 0.07, beat: 0.3, amp: 0.3, yHold: REST_Y + 0.17 * sstep(0, 2.2, t) * (1 - sstep(11, 15, t)) });
       blows(t, 4.2);
-      if (!M.together && t > 1.6) { M.together = true; breathe(); } // she blows and the calf breathes with her
+      if (!M.together && t > 1.6) { M.together = true; BR.ask = 0; breathe(); BR.extra = 1.8; } // she blows and the calf comes up with her, staying a little longer to see it
       if (!M.codaDone && t > 6) { M.codaDone = true; motherCoda(CODAS[(M.cycle + 1) % CODAS.length]); M.calfAt = t + 6.5; }
       if (!M.endShown && t > 15) {
         M.endShown = true;
@@ -2574,8 +2701,14 @@ function updateCam(dt) {
   const dx = T[0] - cam.pos[0], dy = T[1] - cam.pos[1], dz = T[2] - cam.pos[2];
   let yT = Math.atan2(-dz, dx), pT = clamp(Math.atan2(dy, Math.hypot(dx, dz)), -1.38, 1.15);
   const be = breathEnv();
-  pT = pT * (1 - be) + 0.04 * be;
-  const kl = 1 - Math.exp(-dt * (M.ph === 'away' ? 0.45 : 0.9));
+  const spoutUp = M.ph === 'reunion' && BR.extra > 0 && S.time - SPOUT.t0 < 6.5 && S.time - SPOUT.t0 > -1.5;
+  if (spoutUp && be > 0) { // up for air beside her, the calf looks up at her spout
+    const sp = [SPOUT.o[0] + SPOUT.d[0] * 0.30, SPOUT.o[1] + SPOUT.d[1] * 0.30, SPOUT.o[2] + SPOUT.d[2] * 0.30];
+    const ex = sp[0] - cam.pos[0], ez = sp[2] - cam.pos[2];
+    yT = Math.atan2(-ez, ex);
+    pT = pT * (1 - be) + clamp(Math.atan2(sp[1] - cam.eye[1], Math.hypot(ex, ez)), 0.04, 0.38) * be;
+  } else pT = pT * (1 - be) + 0.04 * be;
+  const kl = 1 - Math.exp(-dt * (M.ph === 'away' ? 0.45 : spoutUp ? 1.6 : 0.9));
   cam.yaw = wrapA(cam.yaw + wrapA(yT - cam.yaw) * kl);
   cam.pitch += (pT - cam.pitch) * kl;
   // widen the eye just enough to hold her whole body while she leaves and when she comes back
@@ -2791,7 +2924,7 @@ function buildPropMesh() {
 
 // ---------- other lives passing while the calf waits ----------
 const CR_MAX = 64;
-const RAY_NX = 28, RAY_NZ = 22, WASH_N = 3200;
+const RAY_NX = 28, RAY_NZ = 22, WASH_N = 3200, SPOUT_N = 2600;
 const CR = { list: [], data: new Float32Array(CR_MAX * 12), n: 0 };
 function crAhead(yaw, dist, y) { return [cam.pos[0] + Math.cos(yaw) * dist, y, cam.pos[2] - Math.sin(yaw) * dist]; }
 function crPath(c, yaw, speed, life) { // a straight crossing in front of the calf, centred on c halfway through its life
@@ -2950,7 +3083,7 @@ async function initGPU() {
   const errs = info.messages.filter(m => m.type === 'error');
   if (errs.length) throw new Error('Shader: ' + errs.map(m => `${m.lineNum}:${m.linePos} ${m.message}`).join('\n'));
   const mk = (data, usage) => { const b = device.createBuffer({ size: Math.max(16, (data.byteLength + 3) & ~3), usage: usage | GPUBufferUsage.COPY_DST }); device.queue.writeBuffer(b, 0, data); return b; };
-  const ubuf = device.createBuffer({ size: 336, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+  const ubuf = device.createBuffer({ size: 368, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
   const cellBuf = mk(new Uint32Array(LAT.cells), GPUBufferUsage.STORAGE);
   const posBuf = device.createBuffer({ size: LAT.n * 16, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
   const leanBuf = device.createBuffer({ size: LAT.n * 16, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
@@ -2995,6 +3128,7 @@ async function initGPU() {
     ray: pipe('vsRay', 'fsRay', [], { cull: 'none', blend: true, depth: { format: 'depth24plus', depthWriteEnabled: false, depthCompare: 'less' } }),
     prop: pipe('vsProp', 'fsShip', [{ arrayStride: 36, attributes: [
       { shaderLocation: 0, offset: 0, format: 'float32x3' }, { shaderLocation: 1, offset: 12, format: 'float32x3' }, { shaderLocation: 2, offset: 24, format: 'float32x3' }] }], { cull: 'none' }),
+    spout: pipe('vsSpout', 'fsSpout', [], { cull: 'none', blend: true, depth: { format: 'depth24plus', depthWriteEnabled: false, depthCompare: 'less' } }),
     wash: pipe('vsWash', 'fsWash', [], { cull: 'none', blend: true, depth: { format: 'depth24plus', depthWriteEnabled: false, depthCompare: 'less' } }),
     ship: pipe('vsShip', 'fsShip', [{ arrayStride: 36, attributes: [
       { shaderLocation: 0, offset: 0, format: 'float32x3' }, { shaderLocation: 1, offset: 12, format: 'float32x3' }, { shaderLocation: 2, offset: 24, format: 'float32x3' }] }], { cull: 'none' }),
@@ -3005,7 +3139,7 @@ async function initGPU() {
   device.lost.then(i => { if (i.reason !== 'destroyed') { G = null; showNoGPU('그래픽 장치와의 연결이 끊겼습니다. 페이지를 새로 고쳐 다시 시작해 주세요.'); } });
   const shipData = buildShipMesh(), shipBuf = mk(shipData, GPUBufferUsage.VERTEX);
   const propData = buildPropMesh(), propBuf = mk(propData, GPUBufferUsage.VERTEX);
-  G = { device, ctx, format, ubuf, creBuf, ripBuf, shipBuf, shipN: shipData.length / 9, propBuf, propN: propData.length / 9, posBuf, leanBuf, vbuf, ibuf, bind, pipes, nIdx: MESH.idx.length, msaa: null, depthTex: null, w: 0, h: 0, u: new Float32Array(84) };
+  G = { device, ctx, format, ubuf, creBuf, ripBuf, shipBuf, shipN: shipData.length / 9, propBuf, propN: propData.length / 9, posBuf, leanBuf, vbuf, ibuf, bind, pipes, nIdx: MESH.idx.length, msaa: null, depthTex: null, w: 0, h: 0, u: new Float32Array(92) };
 }
 function ensureTargets() {
   const dpr = Math.min(window.devicePixelRatio || 1, QUAL[qi].dpr);
@@ -3047,6 +3181,8 @@ function writeUniforms(vp, realT) {
   const cl = toLocal(cam.eye); U[72] = cl[0]; U[73] = cl[1]; U[74] = cl[2]; U[75] = blinkAmt();
   U[76] = SHIP.pos[0]; U[77] = SHIP.pos[2]; U[78] = SHIP.yaw; U[79] = SHIP.on ? 1 : 0;
   U[80] = SHIP.shade; U[81] = SHIP.t; U[82] = 0; U[83] = 0;
+  U[84] = SPOUT.o[0]; U[85] = SPOUT.o[1]; U[86] = SPOUT.o[2]; U[87] = SPOUT.t0;
+  U[88] = SPOUT.d[0]; U[89] = SPOUT.d[1]; U[90] = SPOUT.d[2]; U[91] = SPOUT.k;
   G.device.queue.writeBuffer(G.ubuf, 0, U);
 }
 function motherVisible() { return !M.hidden && S.pos[1] > -17.5; }
@@ -3085,6 +3221,8 @@ function render(realT) {
   }
   G.device.queue.writeBuffer(G.ripBuf, 0, RIP.data);
   pass.setPipeline(G.pipes.surf); pass.draw(6);
+  // her spout hangs in the air; seen only from above the water
+  if (cam.eye[1] > SURF && S.time - SPOUT.t0 < 8) { pass.setPipeline(G.pipes.spout); pass.draw(6, SPOUT_N); }
   pass.end();
   G.device.queue.submit([enc.finish()]);
   return tex;
@@ -3444,7 +3582,7 @@ function restart() {
   cam.pos = besideAnchor(...NEST); cam.eye = cam.pos.slice(); cam.oy = 0; cam.op = 0; cam.fit = 0;
   const T = mPoint(0.45, -0.11, 0.10);
   cam.yaw = Math.atan2(-(T[2] - cam.pos[2]), T[0] - cam.pos[0]); cam.pitch = Math.atan2(T[1] - cam.pos[1], Math.hypot(T[0] - cam.pos[0], T[2] - cam.pos[2]));
-  BR.ask = 0; BR.p = 0; BR.asks = 0; BLINK.t = -1; BLINK.next = 3;
+  BR.ask = 0; BR.p = 0; BR.asks = 0; BR.extra = 0; SPOUT.t0 = -100; BLINK.t = -1; BLINK.next = 3;
   SHIP.on = false; SHIP.loud = 0; SHIP.shade = 0; SHIP.block = false;
   TAP.list.length = 0; TAP.listenUntil = 0; CAPQ.length = 0;
   const ec = document.getElementById('endcard'); if (ec) ec.classList.remove('show');
